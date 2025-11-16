@@ -83,16 +83,38 @@ t2 = @elapsed render(smld_noisy,
 )
 println("    ✓ $(round(t2*1000, digits=1)) ms")
 
-# Image 3: Gaussian + time coloring (temporal dynamics)
-println("  • Rendering octamer_time.png...")
-t3 = @elapsed render(smld_noisy,
+# Image 3a: Gaussian + time coloring with viridis (perceptual uniform)
+println("  • Rendering octamer_time_viridis.png...")
+t3a = @elapsed render(smld_noisy,
     strategy = GaussianRender(),
-    color_by = :frame,  # Shows when localizations appeared
-    colormap = :twilight,  # Cyclic colormap good for temporal data
-    zoom = 20,  # 5nm pixels
-    filename = joinpath(output_dir, "octamer_time.png")
+    color_by = :frame,
+    colormap = :viridis,  # Default perceptual colormap
+    zoom = 20,
+    filename = joinpath(output_dir, "octamer_time_viridis.png")
 )
-println("    ✓ $(round(t3*1000, digits=1)) ms")
+println("    ✓ $(round(t3a*1000, digits=1)) ms")
+
+# Image 3b: Gaussian + time coloring with turbo (high contrast)
+println("  • Rendering octamer_time_turbo.png...")
+t3b = @elapsed render(smld_noisy,
+    strategy = GaussianRender(),
+    color_by = :frame,
+    colormap = :turbo,  # Google's high-contrast rainbow
+    zoom = 20,
+    filename = joinpath(output_dir, "octamer_time_turbo.png")
+)
+println("    ✓ $(round(t3b*1000, digits=1)) ms")
+
+# Image 3c: Gaussian + time coloring with plasma (high contrast perceptual)
+println("  • Rendering octamer_time_plasma.png...")
+t3c = @elapsed render(smld_noisy,
+    strategy = GaussianRender(),
+    color_by = :frame,
+    colormap = :plasma,  # High contrast perceptual
+    zoom = 20,
+    filename = joinpath(output_dir, "octamer_time_plasma.png")
+)
+println("    ✓ $(round(t3c*1000, digits=1)) ms")
 
 # Image 4: Gaussian + photon coloring (brightness information)
 println("  • Rendering octamer_photons.png...")
@@ -184,12 +206,14 @@ println("BATCH GENERATION SUMMARY")
 println("="^70)
 println("Dataset: $(length(smld_noisy.emitters)) localizations")
 println("\nGeneration Times (render + save):")
-println("  - octamer_inferno.png:        $(round(t1*1000, digits=1)) ms  (Gaussian + intensity)")
-println("  - octamer_hot.png:            $(round(t2*1000, digits=1)) ms  (Gaussian + intensity)")
-println("  - octamer_time.png:           $(round(t3*1000, digits=1)) ms  (Gaussian + temporal)")
-println("  - octamer_photons.png:        $(round(t4*1000, digits=1)) ms  (Gaussian + field)")
-println("  - octamer_circles_time.png:   $(round(t5*1000, digits=1)) ms  (Circles + temporal)")
-println("  - octamer_histogram.png:      $(round(t6*1000, digits=1)) ms  (Histogram + fast)")
+println("  - octamer_inferno.png:        $(round(t1*1000, digits=1)) ms  (Gaussian + inferno)")
+println("  - octamer_hot.png:            $(round(t2*1000, digits=1)) ms  (Gaussian + hot)")
+println("  - octamer_time_viridis.png:   $(round(t3a*1000, digits=1)) ms  (Gaussian + time + viridis)")
+println("  - octamer_time_turbo.png:     $(round(t3b*1000, digits=1)) ms  (Gaussian + time + turbo)")
+println("  - octamer_time_plasma.png:    $(round(t3c*1000, digits=1)) ms  (Gaussian + time + plasma)")
+println("  - octamer_photons.png:        $(round(t4*1000, digits=1)) ms  (Gaussian + photons + plasma)")
+println("  - octamer_circles_time.png:   $(round(t5*1000, digits=1)) ms  (Circles + time + turbo)")
+println("  - octamer_histogram.png:      $(round(t6*1000, digits=1)) ms  (Histogram + viridis)")
 println("\nRendering Strategies:")
 println("  • GaussianRender:   Smooth, sub-pixel accuracy, publication quality")
 println("  • CircleRender:     Visualize localization uncertainty (1σ circles)")
@@ -206,11 +230,13 @@ println("  render(smld, strategy=..., colormap=..., zoom=20, filename=\"output.p
 println("="^70)
 
 println("\n✓ All images saved to $(output_dir)/")
-println("\nGenerated files (6 core images + 1 comparison):")
-println("  - octamer_inferno.png         (classic SMLM: Gaussian + inferno)")
-println("  - octamer_hot.png             (classic SMLM: Gaussian + hot)")
-println("  - octamer_time.png            (temporal: Gaussian + frame coloring)")
-println("  - octamer_photons.png         (brightness: Gaussian + photon coloring)")
-println("  - octamer_circles_time.png    (uncertainty: Circles + time)")
-println("  - octamer_histogram.png       (fast: Histogram + viridis)")
+println("\nGenerated files (8 core images + 1 comparison):")
+println("  - octamer_inferno.png         (Gaussian + inferno)")
+println("  - octamer_hot.png             (Gaussian + hot)")
+println("  - octamer_time_viridis.png    (Gaussian + time + viridis)")
+println("  - octamer_time_turbo.png      (Gaussian + time + turbo)")
+println("  - octamer_time_plasma.png     (Gaussian + time + plasma)")
+println("  - octamer_photons.png         (Gaussian + photons + plasma)")
+println("  - octamer_circles_time.png    (Circles + time + turbo, saturates)")
+println("  - octamer_histogram.png       (Histogram + viridis)")
 println("  - comparison.png              (side-by-side for analysis)")
