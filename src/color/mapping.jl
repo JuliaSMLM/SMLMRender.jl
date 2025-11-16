@@ -237,3 +237,61 @@ function normalize_rgb(img::AbstractMatrix{<:Colorant})
 
     return result
 end
+
+"""
+    apply_intensity_weighted_color(intensity, r_num, g_num, b_num; gamma=0.6)
+
+Combine intensity and color numerators using intensity-weighted color algorithm.
+
+This computes the average color at each pixel (weighted by intensity) and then
+modulates by the local intensity with gamma correction for vibrant, punchy colors.
+
+# Algorithm:
+1. Average color: RGB = (r_num/S, g_num/S, b_num/S) where S = intensity
+2. Brightness: B = (S / max(S))^gamma
+3. Final: RGB * B
+
+# Arguments
+- `intensity`: Total accumulated intensity (overlap count)
+- `r_num`, `g_num`, `b_num`: Color numerators weighted by intensity
+- `gamma`: Gamma correction factor (default 0.6 for more dynamic range)
+"""
+function apply_intensity_weighted_color(intensity::Matrix{Float64},
+                                       r_num::Matrix{Float64},
+                                       g_num::Matrix{Float64},
+                                       b_num::Matrix{Float64};
+                                       gamma::Float64 = 0.6)
+    height, width = size(intensity)
+    result = zeros(RGB{Float64}, height, width)
+
+    # Find max intensity for normalization
+    max_intensity = maximum(intensity)
+    if max_intensity ≈ 0.0
+        return result  # All black
+    end
+
+    # Small epsilon to avoid division by zero
+    ε = 1e-6
+
+    for i in 1:height, j in 1:width
+        S = intensity[i, j]
+
+        if S > ε
+            # Compute average color (intensity-weighted)
+            r_avg = r_num[i, j] / S
+            g_avg = g_num[i, j] / S
+            b_avg = b_num[i, j] / S
+
+            # Compute brightness modulation with gamma
+            brightness = (S / max_intensity)^gamma
+
+            # Final color: average color * brightness
+            result[i, j] = RGB(r_avg * brightness,
+                             g_avg * brightness,
+                             b_avg * brightness)
+        end
+        # else: pixel stays black (S ≈ 0)
+    end
+
+    return result
+end

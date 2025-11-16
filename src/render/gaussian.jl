@@ -75,8 +75,13 @@ Each blob is colored according to its field value.
 function render_gaussian_field(smld, target::Image2DTarget,
                               strategy::GaussianRender,
                               mapping::FieldColorMapping)
-    # Accumulate RGB
-    result = zeros(RGB{Float64}, target.height, target.width)
+    # Use intensity-weighted color algorithm
+    # Track both intensity and color numerators for proper weighting
+
+    intensity = zeros(Float64, target.height, target.width)  # Total intensity (S)
+    r_num = zeros(Float64, target.height, target.width)      # Red numerator
+    g_num = zeros(Float64, target.height, target.width)      # Green numerator
+    b_num = zeros(Float64, target.height, target.width)      # Blue numerator
 
     # Determine value range
     value_range = prepare_field_range(smld, mapping)
@@ -92,13 +97,15 @@ function render_gaussian_field(smld, target::Image2DTarget,
         # Get color for this emitter
         color = get_emitter_color(emitter, mapping, value_range)
 
-        # Render colored blob
-        render_gaussian_blob_colored!(result, emitter, target, sigma_x, sigma_y,
-                                     strategy.n_sigmas, strategy.normalization, color)
+        # Render blob, accumulating both intensity and color
+        render_gaussian_blob_weighted!(intensity, r_num, g_num, b_num,
+                                       emitter, target, sigma_x, sigma_y,
+                                       strategy.n_sigmas, strategy.normalization,
+                                       color)
     end
 
-    # Normalize to use full dynamic range (like intensity-based does)
-    return normalize_rgb(result)
+    # Compute intensity-weighted color with gamma correction
+    return apply_intensity_weighted_color(intensity, r_num, g_num, b_num)
 end
 
 """
@@ -282,5 +289,57 @@ function render_gaussian_blob_colored!(img::Matrix{RGB{Float64}}, emitter,
 
         # Accumulate colored blob
         img[i, j] += color * value
+    end
+end
+
+"""
+    render_gaussian_blob_weighted!(intensity, r_num, g_num, b_num, emitter, target,
+                                   sigma_x, sigma_y, n_sigmas, normalization, color)
+
+Render Gaussian blob accumulating both intensity and color numerators.
+This enables intensity-weighted color rendering.
+"""
+function render_gaussian_blob_weighted!(intensity::Matrix{Float64},
+                                       r_num::Matrix{Float64},
+                                       g_num::Matrix{Float64},
+                                       b_num::Matrix{Float64},
+                                       emitter, target::Image2DTarget,
+                                       sigma_x::Float64, sigma_y::Float64,
+                                       n_sigmas::Float64, normalization::Symbol,
+                                       color::RGB{Float64})
+    x_pixel, y_pixel = physical_to_pixel(emitter.x, emitter.y, target)
+
+    sigma_x_pix = sigma_x / target.pixel_size
+    sigma_y_pix = sigma_y / target.pixel_size
+
+    half_width_x = ceil(Int, n_sigmas * sigma_x_pix)
+    half_width_y = ceil(Int, n_sigmas * sigma_y_pix)
+
+    j_min = max(1, floor(Int, x_pixel) - half_width_x)
+    j_max = min(target.width, ceil(Int, x_pixel) + half_width_x)
+    i_min = max(1, floor(Int, y_pixel) - half_width_y)
+    i_max = min(target.height, ceil(Int, y_pixel) + half_width_y)
+
+    inv_2sigma_x2 = 1.0 / (2.0 * sigma_x_pix^2)
+    inv_2sigma_y2 = 1.0 / (2.0 * sigma_y_pix^2)
+
+    if normalization == :integral
+        norm_factor = 1.0 / (2π * sigma_x_pix * sigma_y_pix)
+    else
+        norm_factor = 1.0
+    end
+
+    for i in i_min:i_max, j in j_min:j_max
+        dx = Float64(j) - x_pixel
+        dy = Float64(i) - y_pixel
+
+        exponent = -(dx^2 * inv_2sigma_x2 + dy^2 * inv_2sigma_y2)
+        w = exp(exponent) * norm_factor
+
+        # Accumulate intensity and color numerators
+        intensity[i, j] += w
+        r_num[i, j] += w * color.r
+        g_num[i, j] += w * color.g
+        b_num[i, j] += w * color.b
     end
 end
