@@ -204,26 +204,27 @@ Determine color mapping from keyword arguments.
 function _determine_color_mapping(colormap, color_by, color,
                                   clip_percentile, field_range,
                                   field_clip_percentiles)
-    # Count how many color options are specified
-    n_specified = sum([colormap !== nothing, color_by !== nothing, color !== nothing])
-
-    if n_specified > 1
-        error("Only one of colormap, color_by, or color should be specified")
-    elseif n_specified == 0
-        # Default: intensity with inferno
-        return IntensityColorMapping(:inferno, clip_percentile)
+    # Check for invalid combinations
+    if color !== nothing && (colormap !== nothing || color_by !== nothing)
+        error("color cannot be combined with colormap or color_by")
     end
 
     # Determine which mapping to use
-    if colormap !== nothing
-        return IntensityColorMapping(colormap, clip_percentile)
-    elseif color_by !== nothing
-        # Default colormap for field-based coloring
-        default_colormap = :viridis
-        return FieldColorMapping(color_by, default_colormap, field_range,
+    if color_by !== nothing
+        # Field-based coloring
+        # Use specified colormap or default to viridis
+        field_colormap = colormap !== nothing ? colormap : :viridis
+        return FieldColorMapping(color_by, field_colormap, field_range,
                                 field_clip_percentiles)
+    elseif colormap !== nothing
+        # Intensity-based coloring
+        return IntensityColorMapping(colormap, clip_percentile)
     elseif color !== nothing
+        # Manual color
         return ManualColorMapping(RGB{Float64}(color))
+    else
+        # Default: intensity with inferno
+        return IntensityColorMapping(:inferno, clip_percentile)
     end
 end
 

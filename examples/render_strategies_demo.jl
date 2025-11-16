@@ -88,6 +88,7 @@ println("  • Rendering octamer_time.png...")
 t3 = @elapsed render(smld_noisy,
     strategy = GaussianRender(),
     color_by = :frame,  # Shows when localizations appeared
+    colormap = :twilight,  # Cyclic colormap good for temporal data
     zoom = 20,  # 5nm pixels
     filename = joinpath(output_dir, "octamer_time.png")
 )
@@ -98,6 +99,7 @@ println("  • Rendering octamer_photons.png...")
 t4 = @elapsed render(smld_noisy,
     strategy = GaussianRender(),
     color_by = :photons,  # Shows brightness of each localization
+    colormap = :plasma,  # Good for showing continuous variation
     zoom = 20,  # 5nm pixels
     filename = joinpath(output_dir, "octamer_photons.png")
 )
@@ -112,6 +114,7 @@ t5 = @elapsed render(smld_noisy,
         use_localization_precision = true
     ),
     color_by = :frame,  # Temporal information
+    colormap = :turbo,  # Bright colormap, saturates on overlap for visibility
     zoom = 50,  # 2nm pixels - need high resolution for thin circle lines
     filename = joinpath(output_dir, "octamer_circles_time.png")
 )
@@ -141,9 +144,10 @@ end
 
 # Load the generated images for comparison
 img_inferno = render(smld_noisy, strategy=GaussianRender(), colormap=:inferno, zoom=20)
-img_time = render(smld_noisy, strategy=GaussianRender(), color_by=:frame, zoom=20)
+img_time = render(smld_noisy, strategy=GaussianRender(), color_by=:frame,
+                  colormap=:twilight, zoom=20)
 img_circles = render(smld_noisy, strategy=CircleRender(1.0, 1.0, true, nothing),
-                     color_by=:frame, zoom=50)
+                     color_by=:frame, colormap=:turbo, zoom=50)
 
 fig = Figure(size=(1600, 500))
 

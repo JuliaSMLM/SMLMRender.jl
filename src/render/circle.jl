@@ -63,8 +63,8 @@ function render_circle_field(smld, target::Image2DTarget,
                            color, strategy.line_width)
     end
 
-    # Normalize to use full dynamic range (like intensity-based does)
-    return normalize_rgb(result)
+    # Don't normalize - let circles saturate on overlap for bright intersections
+    return result
 end
 
 """
