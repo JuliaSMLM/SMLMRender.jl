@@ -3,6 +3,8 @@ module SMLMRender
 using Colors
 using ColorSchemes
 using Statistics
+using FileIO
+using ImageIO
 
 # Core types
 include("types.jl")
@@ -36,5 +38,6 @@ export render, render_overlay
 # Export utilities (may be useful for users)
 export Image2DTarget, create_target_from_smld
 export list_recommended_colormaps
+export save_image
 
 end

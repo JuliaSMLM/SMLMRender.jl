@@ -55,7 +55,10 @@ function render(smld;
 
                 # Backend and output
                 backend::Symbol = :cpu,
-                output_type::Symbol = :rgb)
+                output_type::Symbol = :rgb,
+
+                # Optional file save
+                filename::Union{String, Nothing} = nothing)
 
     # Create target if not provided
     if target === nothing
@@ -73,7 +76,14 @@ function render(smld;
                           backend=backend, output_type=output_type)
 
     # Dispatch to appropriate rendering function
-    return _render_dispatch(smld, target, options)
+    img = _render_dispatch(smld, target, options)
+
+    # Save to file if requested
+    if filename !== nothing
+        save_image(filename, img)
+    end
+
+    return img
 end
 
 """
@@ -90,7 +100,8 @@ function render(smld, x_edges::AbstractVector, y_edges::AbstractVector;
                 field_range::Union{Tuple{Real, Real}, Symbol} = :auto,
                 field_clip_percentiles::Union{Tuple{Real, Real}, Nothing} = (0.01, 0.99),
                 backend::Symbol = :cpu,
-                output_type::Symbol = :rgb)
+                output_type::Symbol = :rgb,
+                filename::Union{String, Nothing} = nothing)
 
     # Create target from edges
     width = length(x_edges) - 1
@@ -107,7 +118,7 @@ function render(smld, x_edges::AbstractVector, y_edges::AbstractVector;
     return render(smld; target=target, strategy=strategy, colormap=colormap,
                  color_by=color_by, color=color, clip_percentile=clip_percentile,
                  field_range=field_range, field_clip_percentiles=field_clip_percentiles,
-                 backend=backend, output_type=output_type)
+                 backend=backend, output_type=output_type, filename=filename)
 end
 
 """

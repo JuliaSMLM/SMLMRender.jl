@@ -115,6 +115,16 @@ t4 = @elapsed img_circles = render(smld_noisy,
 )
 println("    ✓ Complete in $(round(t4*1000, digits=1)) ms")
 
+# Demonstrate direct save with filename kwarg (NEW FEATURE!)
+println("  • Direct save with filename kwarg...")
+t5 = @elapsed render(smld_noisy,
+    strategy = GaussianRender(),
+    colormap = :magma,
+    zoom = 10,
+    filename = joinpath(output_dir, "direct_save_example.png")  # Saves automatically!
+)
+println("    ✓ Rendered and saved in $(round(t5*1000, digits=1)) ms")
+
 # 3. Create comparison figure
 println("\n[3/4] Creating comparison visualizations...")
 
@@ -183,12 +193,15 @@ img_color_sigma = render(smld_noisy,
     zoom = 10
 )
 
-println("  • Color by frame number...")
+println("  • Color by time (frame number) - shows temporal dynamics...")
+# This is especially useful for visualizing blinking dynamics or diffusion over time
 img_color_frame = render(smld_noisy,
     strategy = GaussianRender(),
     color_by = :frame,
-    zoom = 10
+    zoom = 10,
+    filename = joinpath(output_dir, "temporal_coloring.png")  # Direct save!
 )
+println("    ✓ Saved temporal_coloring.png")
 
 # Create color mapping comparison
 fig2 = Figure(size=(1600, 400))
@@ -236,11 +249,16 @@ println("  - GaussianRender:   High quality, sub-pixel accuracy, realistic PSF")
 println("  - CircleRender:     Visualize localization uncertainty")
 println("\nColor Mapping Options:")
 println("  - Intensity colormaps: accumulate intensity → apply colormap")
-println("  - Field-based: color each localization by field value")
+println("  - Field-based: color each localization by field value (photons, σ, time)")
 println("  - Manual colors: fixed color (useful for multi-channel overlays)")
+println("\nDirect Save Feature:")
+println("  - Use filename kwarg for one-step render + save workflow")
+println("  - Example: render(smld, zoom=10, filename=\"output.png\")")
 println("="^70)
 
 println("\n✓ All outputs saved to $(output_dir)/")
 println("\nGenerated files:")
 println("  - rendering_strategies.png  (compare 4 rendering methods)")
 println("  - color_mapping.png         (compare field-based coloring)")
+println("  - direct_save_example.png   (direct save demo)")
+println("  - temporal_coloring.png     (color by time/frame)")

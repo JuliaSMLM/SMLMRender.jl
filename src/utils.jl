@@ -1,6 +1,7 @@
 # Utility functions for SMLMRender.jl
 
 using Statistics
+import FileIO  # For save_image function
 
 """
     physical_to_pixel(x_phys, y_phys, target::Image2DTarget)
@@ -266,4 +267,37 @@ function draw_antialiased_point!(img::Matrix{RGB{Float64}}, x::Real, y::Real,
             img[i, j] += color * w * thickness_factor
         end
     end
+end
+
+"""
+    save_image(filename::String, img::Matrix{RGB})
+
+Save rendered image directly to file.
+
+Supports PNG, TIFF, and other formats via FileIO/ImageIO.
+The image is saved with proper orientation for SMLM visualization.
+
+# Arguments
+- `filename`: Output file path (extension determines format)
+- `img`: RGB image matrix from render()
+
+# Example
+```julia
+img = render(smld, zoom=10)
+save_image("output.png", img)
+```
+"""
+function save_image(filename::String, img::AbstractMatrix{<:Colorant})
+    # Clamp RGB values to [0,1] to avoid overflow errors
+    # TODO: Fix this in rendering functions instead
+    img_clamped = map(img) do pixel
+        RGB(clamp(pixel.r, 0.0, 1.0),
+            clamp(pixel.g, 0.0, 1.0),
+            clamp(pixel.b, 0.0, 1.0))
+    end
+
+    # Save directly using FileIO (will dispatch to ImageIO)
+    FileIO.save(filename, img_clamped)
+
+    return nothing
 end
