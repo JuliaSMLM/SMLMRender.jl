@@ -11,7 +11,14 @@ This example demonstrates a complete SMLM simulation and rendering workflow:
    - Ground truth overlay comparison
 
 Outputs are saved to examples/output/
+
+NOTE: This example uses SMLMSim/SMLMData but does NOT use SMLMRender.jl.
+For examples using SMLMRender, see render_strategies_demo.jl
 """
+
+# Activate the examples environment
+import Pkg
+Pkg.activate(@__DIR__)
 
 using SMLMSim
 using SMLMData

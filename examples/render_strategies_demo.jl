@@ -10,6 +10,10 @@ This example demonstrates SMLMRender.jl's rendering capabilities:
 Outputs are saved to examples/output/
 """
 
+# Activate the examples environment
+import Pkg
+Pkg.activate(@__DIR__)
+
 using SMLMSim
 using SMLMData
 using SMLMRender
