@@ -3,7 +3,14 @@ uuid = "d945b928-cd23-4282-89d9-fc086b52682d"
 authors = ["klidke@unm.edu"]
 version = "1.0.0-DEV"
 
+[deps]
+Colors = "5ae59095-9a9b-59fe-a467-6f913c188581"
+ColorSchemes = "35d6a980-a343-548e-a6ea-1d62b119f2f4"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+
 [compat]
+Colors = "0.12"
+ColorSchemes = "3.26"
 julia = "1.10"
 
 [extras]

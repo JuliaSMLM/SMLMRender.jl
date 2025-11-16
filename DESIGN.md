@@ -103,6 +103,13 @@ struct GaussianRender <: Render2DStrategy
     normalization::Symbol      # :integral or :maximum
 end
 
+struct CircleRender <: Render2DStrategy
+    radius_factor::Float64     # Multiply sigma by this (1.0=1σ, 2.0=2σ)
+    line_width::Float64        # Outline width in pixels (default: 1.0)
+    use_localization_precision::Bool  # Use σ_x, σ_y or fixed radius
+    fixed_radius::Union{Float64, Nothing}  # Fixed radius in nm
+end
+
 struct AdaptiveGaussianRender <: Render2DStrategy
     n_sigmas::Float64
     min_sigma::Float64         # Minimum blur (nm)
@@ -137,21 +144,30 @@ end
 
 abstract type ColorMapping end
 
-struct SingleColor <: ColorMapping
-    # All localizations same color, vary intensity
+# 1. Intensity-based coloring: accumulate grayscale, then apply colormap
+#    Use case: Traditional SMLM images, density visualization
+struct IntensityColorMapping <: ColorMapping
+    colormap::Symbol           # :inferno, :hot, :viridis, etc.
+    clip_percentile::Float64   # Clip before mapping (0.999 = top 0.1%)
 end
 
+# 2. Field-based coloring: each localization colored by its field value
+#    Use case: Depth coding (z), time series (frame), photon weighting
 struct FieldColorMapping <: ColorMapping
-    field::Symbol              # Which field to color by (:z, :photons, :frame, etc.)
+    field::Symbol              # :z, :photons, :frame, :σ_x, etc.
     colormap::Symbol           # ColorSchemes.jl colormap name
     range::Union{Tuple{Float64, Float64}, Symbol}  # Explicit or :auto
-    clamp_percentiles::Union{Tuple{Float64, Float64}, Nothing}  # (0.01, 0.99)
+    clip_percentiles::Union{Tuple{Float64, Float64}, Nothing}  # (0.01, 0.99)
 end
 
-struct CustomColorMapping <: ColorMapping
-    # User provides function: emitter → RGB
-    color_function::Function
+# 3. Manual single color: all localizations same color
+#    Use case: Multi-color overlays (red/green two-color STORM)
+struct ManualColorMapping <: ColorMapping
+    color::RGB{Float64}        # Fixed color for all localizations
 end
+
+# 4. Grayscale output (no colormap applied)
+struct GrayscaleMapping <: ColorMapping end
 
 # ============================================================================
 # Contrast Enhancement
@@ -281,27 +297,73 @@ img = render(smld;
 ### Color Mapping
 
 ```julia
-# Color by z-position with viridis colormap
-img = render(smld;
-    color_mapping = FieldColorMapping(:z, :viridis, :auto, (0.01, 0.99)))
+# 1. INTENSITY COLORMAP (traditional SMLM rendering)
+# Just inferno intensity map - accumulate intensity, then apply colormap
+img = render(smld, colormap=:inferno)
+# Equivalent to: IntensityColorMapping(:inferno, 0.999)
 
-# Color by photon count
-img = render(smld;
+# Other intensity colormaps
+img = render(smld, colormap=:hot)      # Classic "hot" colormap
+img = render(smld, colormap=:viridis)  # Perceptually uniform
+
+# 2. FIELD-BASED COLORMAP (each localization colored by field)
+# Color by z-depth
+img = render(smld, color_by=:z, colormap=:viridis)
+# Equivalent to: FieldColorMapping(:z, :viridis, :auto, (0.01, 0.99))
+
+# Color by photon count with explicit range
+img = render(smld,
     color_mapping = FieldColorMapping(:photons, :inferno, (100.0, 10000.0), nothing))
 
-# Color by frame (time)
-img = render(smld;
-    color_mapping = FieldColorMapping(:frame, :twilight, :auto, (0.0, 1.0)))
+# Color by frame (time series)
+img = render(smld, color_by=:frame, colormap=:twilight)
 
-# Color by uncertainty (quality metric)
-img = render(smld;
-    color_mapping = FieldColorMapping(:σ_x, :plasma, (5.0, 30.0), nothing))
+# Color by localization precision (quality metric)
+img = render(smld, color_by=:σ_x, colormap=:plasma)
 
-# Custom coloring function
-img = render(smld;
-    color_mapping = CustomColorMapping(
-        emitter -> emitter.photons > 5000 ? RGB(1,0,0) : RGB(0,1,0)
-    ))
+# 3. MANUAL COLOR (for multi-color overlays)
+# Single red color
+img = render(smld, color=colorant"red")
+# Equivalent to: ManualColorMapping(RGB(1,0,0))
+
+# Single green color
+img = render(smld, color=RGB(0,1,0))
+```
+
+### Circle Rendering
+
+```julia
+# Circle outlines at 2σ, colored by z-depth
+img = render(smld,
+    strategy = CircleRender(2.0, 1.0, true, nothing),
+    color_by = :z,
+    colormap = :viridis)
+
+# Circle outlines at 1σ with thicker lines, single red color
+img = render(smld,
+    strategy = CircleRender(1.0, 2.5, true, nothing),
+    color = colorant"red")
+
+# Fixed radius circles (not using localization precision)
+img = render(smld,
+    strategy = CircleRender(1.0, 1.0, false, 20.0),  # 20 nm radius
+    colormap = :inferno)
+```
+
+### Multi-Dataset Overlay (Two-Color STORM)
+
+```julia
+# Render two datasets in different colors on same image
+img = render_overlay([smld_protein1, smld_protein2],
+                     colors = [colorant"red", colorant"green"])
+
+# Three-color overlay with Gaussian rendering
+img = render_overlay([smld1, smld2, smld3],
+                     colors = [:red, :green, :blue],
+                     strategy = GaussianRender(3.0, true, nothing, :integral))
+
+# Each dataset normalized independently, then combined additively
+# Oversaturated regions clip to white
 ```
 
 ### Contrast Enhancement
@@ -382,6 +444,114 @@ cloud = render(smld;
 # Fly-through animation (future)
 animation = render_flythrough(smld, camera_path, n_frames=100)
 ```
+
+---
+
+## Implementation Details: Key Design Decisions
+
+### Color Mapping Modes
+
+There are two fundamentally different approaches to coloring SMLM images:
+
+**1. Intensity Colormap (IntensityColorMapping)**
+- Accumulate grayscale intensity first (single channel)
+- Apply colormap to final intensity values
+- **Use case**: Traditional SMLM density images, publication figures
+- **How it works**:
+  1. Each blob/localization contributes to single-channel accumulator
+  2. After all localizations rendered, clip at percentile (e.g., 99.9%)
+  3. Map intensity values → RGB using colormap (inferno, viridis, etc.)
+- **Dense areas** appear bright in the colormap
+- **No field information** encoded in color
+
+**2. Field-Based Colormap (FieldColorMapping)**
+- Each localization colored by its field value before rendering
+- RGB accumulation (additive blending)
+- **Use case**: Depth coding (z), time series (frame), quality metrics
+- **How it works**:
+  1. For each localization, read field value (e.g., z = 0.5 μm)
+  2. Map field value → color using colormap (viridis: 0.5 μm → green)
+  3. Render blob/circle in that color to RGB accumulator
+  4. Where blobs overlap, colors add (red + green = yellow)
+- **Color encodes field**, **brightness encodes density**
+
+**3. Manual Color (ManualColorMapping)**
+- All localizations same fixed color
+- **Use case**: Multi-color overlays (two-color STORM, three-color PAINT)
+- Each dataset rendered separately with its color, then combined
+
+### Multi-Dataset Overlay
+
+For two-color or multi-color imaging experiments:
+
+```julia
+img = render_overlay([smld_protein1, smld_protein2],
+                     colors = [colorant"red", colorant"green"])
+```
+
+**Implementation approach:**
+1. Render each dataset independently to separate RGB image
+2. Normalize each image to [0,1] based on its own intensity distribution (e.g., 99.9th percentile)
+3. Combine images additively: `final = img1 + img2 + img3`
+4. Clip oversaturated values to white: `clamp.(final, RGB(0,0,0), RGB(1,1,1))`
+
+**Why normalize each separately?**
+- Different proteins may have vastly different localization densities
+- Protein A: 10M localizations, Protein B: 500K localizations
+- Without separate normalization, protein B would be invisible
+- After normalization, both channels use full dynamic range
+- User can see both signals clearly in overlay
+
+**Color saturation handling:**
+- When red + green both saturate → clips to white (saturated region)
+- This is standard for fluorescence microscopy overlays
+- Alternative (HDR tone mapping) would compress values softly, but adds complexity
+- Clipping to white is intuitive and standard practice
+
+### Histogram + Field Coloring
+
+When using HistogramRender with FieldColorMapping:
+
+**Challenge:** Multiple localizations per pixel, each with different field values. Which color to use?
+
+**Solution:** Average field values within each pixel
+
+```julia
+# Pseudocode
+intensity[i,j] = count of localizations in pixel (i,j)
+field_sum[i,j] = sum of field values for localizations in pixel (i,j)
+field_avg[i,j] = field_sum[i,j] / max(intensity[i,j], 1)
+
+# Then map field_avg → color, weighted by intensity
+```
+
+**Example:**
+- Pixel contains 5 localizations with z = [0.3, 0.35, 0.4, 0.32, 0.38] μm
+- Average z = 0.35 μm
+- Map 0.35 μm → color via viridis colormap
+- Weight color by intensity (5 localizations worth)
+
+### Circle Rendering Implementation
+
+Circle outlines drawn using direct rasterization (not CairoMakie plotting):
+
+**Why not CairoMakie scatter?**
+- For 10M localizations, scatter([...], marker=:circle) is too slow
+- Direct pixel manipulation is 100-1000× faster
+- We only need simple circle outlines, not complex vector graphics
+
+**Algorithm:**
+1. For each localization, determine radius (from σ or fixed)
+2. Walk around circumference: θ = 0 to 2π
+3. Sample points: `(x, y) = (center_x + r*cos(θ), center_y + r*sin(θ))`
+4. Number of samples: `n = max(12, ceil(2π * radius_pixels))` (adaptive)
+5. Draw anti-aliased points at each sample location
+6. For thick lines: draw multiple concentric circles
+
+**Performance:**
+- For each circle: ~50-200 pixels drawn (depending on radius)
+- Multi-threaded: process localizations in parallel
+- Much faster than Gaussian blobs (which fill entire σ × σ box)
 
 ---
 
