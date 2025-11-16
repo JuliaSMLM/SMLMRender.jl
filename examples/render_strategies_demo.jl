@@ -63,14 +63,12 @@ println("\n[2/3] Batch generating images (direct save workflow)...")
 output_dir = joinpath(@__DIR__, "output")
 mkpath(output_dir)
 
-zoom = 10  # 10nm pixels (10x better than camera)
-
 # Image 1: Gaussian + inferno (classic SMLM look)
 println("  • Rendering octamer_inferno.png...")
 t1 = @elapsed render(smld_noisy,
     strategy = GaussianRender(),
     colormap = :inferno,
-    zoom = zoom,
+    zoom = 20,  # 5nm pixels - good for smooth Gaussian blobs
     filename = joinpath(output_dir, "octamer_inferno.png")
 )
 println("    ✓ $(round(t1*1000, digits=1)) ms")
@@ -80,7 +78,7 @@ println("  • Rendering octamer_hot.png...")
 t2 = @elapsed render(smld_noisy,
     strategy = GaussianRender(),
     colormap = :hot,
-    zoom = zoom,
+    zoom = 20,  # 5nm pixels
     filename = joinpath(output_dir, "octamer_hot.png")
 )
 println("    ✓ $(round(t2*1000, digits=1)) ms")
@@ -90,7 +88,7 @@ println("  • Rendering octamer_time.png...")
 t3 = @elapsed render(smld_noisy,
     strategy = GaussianRender(),
     color_by = :frame,  # Shows when localizations appeared
-    zoom = zoom,
+    zoom = 20,  # 5nm pixels
     filename = joinpath(output_dir, "octamer_time.png")
 )
 println("    ✓ $(round(t3*1000, digits=1)) ms")
@@ -100,7 +98,7 @@ println("  • Rendering octamer_photons.png...")
 t4 = @elapsed render(smld_noisy,
     strategy = GaussianRender(),
     color_by = :photons,  # Shows brightness of each localization
-    zoom = zoom,
+    zoom = 20,  # 5nm pixels
     filename = joinpath(output_dir, "octamer_photons.png")
 )
 println("    ✓ $(round(t4*1000, digits=1)) ms")
@@ -109,12 +107,12 @@ println("    ✓ $(round(t4*1000, digits=1)) ms")
 println("  • Rendering octamer_circles_time.png...")
 t5 = @elapsed render(smld_noisy,
     strategy = CircleRender(
-        radius_factor = 2.0,  # 2σ circles
+        radius_factor = 1.0,  # 1σ circles (shows localization precision)
         line_width = 1.0,
         use_localization_precision = true
     ),
     color_by = :frame,  # Temporal information
-    zoom = zoom,
+    zoom = 50,  # 2nm pixels - need high resolution for thin circle lines
     filename = joinpath(output_dir, "octamer_circles_time.png")
 )
 println("    ✓ $(round(t5*1000, digits=1)) ms")
@@ -124,7 +122,7 @@ println("  • Rendering octamer_histogram.png...")
 t6 = @elapsed render(smld_noisy,
     strategy = HistogramRender(),
     colormap = :viridis,
-    zoom = zoom,
+    zoom = 10,  # 10nm pixels - fast, intentionally pixelated
     filename = joinpath(output_dir, "octamer_histogram.png")
 )
 println("    ✓ $(round(t6*1000, digits=1)) ms")
@@ -142,10 +140,10 @@ function clamp_rgb(img)
 end
 
 # Load the generated images for comparison
-img_inferno = render(smld_noisy, strategy=GaussianRender(), colormap=:inferno, zoom=zoom)
-img_time = render(smld_noisy, strategy=GaussianRender(), color_by=:frame, zoom=zoom)
-img_circles = render(smld_noisy, strategy=CircleRender(2.0, 1.0, true, nothing),
-                     color_by=:frame, zoom=zoom)
+img_inferno = render(smld_noisy, strategy=GaussianRender(), colormap=:inferno, zoom=20)
+img_time = render(smld_noisy, strategy=GaussianRender(), color_by=:frame, zoom=20)
+img_circles = render(smld_noisy, strategy=CircleRender(1.0, 1.0, true, nothing),
+                     color_by=:frame, zoom=50)
 
 fig = Figure(size=(1600, 500))
 
@@ -190,13 +188,17 @@ println("  - octamer_circles_time.png:   $(round(t5*1000, digits=1)) ms  (Circle
 println("  - octamer_histogram.png:      $(round(t6*1000, digits=1)) ms  (Histogram + fast)")
 println("\nRendering Strategies:")
 println("  • GaussianRender:   Smooth, sub-pixel accuracy, publication quality")
-println("  • CircleRender:     Visualize localization uncertainty")
+println("  • CircleRender:     Visualize localization uncertainty (1σ circles)")
 println("  • HistogramRender:  Fast binning, no sub-pixel (good for quick checks)")
+println("\nZoom Strategy:")
+println("  • Circles:   50x (2nm/pixel) - High resolution for thin lines")
+println("  • Gaussian:  20x (5nm/pixel) - Good for smooth blobs")
+println("  • Histogram: 10x (10nm/pixel) - Fast, intentionally pixelated")
 println("\nColor Mapping:")
 println("  • Intensity (colormap):  Accumulate counts → apply colormap (:inferno, :hot)")
 println("  • Field-based:           Color by emitter property (:frame, :photons, :σ_x)")
 println("\nPrimary Workflow:")
-println("  render(smld, strategy=..., colormap=..., zoom=10, filename=\"output.png\")")
+println("  render(smld, strategy=..., colormap=..., zoom=20, filename=\"output.png\")")
 println("="^70)
 
 println("\n✓ All images saved to $(output_dir)/")
