@@ -97,7 +97,8 @@ function render_gaussian_field(smld, target::Image2DTarget,
                                      strategy.n_sigmas, strategy.normalization, color)
     end
 
-    return result
+    # Normalize to use full dynamic range (like intensity-based does)
+    return normalize_rgb(result)
 end
 
 """

@@ -63,7 +63,8 @@ function render_circle_field(smld, target::Image2DTarget,
                            color, strategy.line_width)
     end
 
-    return result
+    # Normalize to use full dynamic range (like intensity-based does)
+    return normalize_rgb(result)
 end
 
 """

@@ -199,3 +199,41 @@ function list_recommended_colormaps()
         :perceptual => [:viridis, :cividis, :inferno, :magma, :plasma]
     )
 end
+
+"""
+    normalize_rgb(img::Matrix{RGB{Float64}})
+
+Normalize RGB image to use full dynamic range while preserving hue.
+
+This function scales all RGB values so that the maximum component
+value across the entire image becomes 1.0, ensuring the image uses
+the full brightness range without changing colors.
+
+Used for field-based rendering to auto-scale like intensity-based rendering does.
+"""
+function normalize_rgb(img::AbstractMatrix{<:Colorant})
+    # Find maximum value across all RGB components
+    max_val = 0.0
+    for pixel in img
+        max_val = max(max_val, pixel.r, pixel.g, pixel.b)
+    end
+
+    # If image is completely black, return as-is
+    if max_val ≈ 0.0
+        return img
+    end
+
+    # Scale all values so max becomes 1.0
+    scale_factor = 1.0 / max_val
+
+    # Apply scaling
+    result = similar(img)
+    for i in eachindex(img)
+        pixel = img[i]
+        result[i] = RGB(pixel.r * scale_factor,
+                       pixel.g * scale_factor,
+                       pixel.b * scale_factor)
+    end
+
+    return result
+end
