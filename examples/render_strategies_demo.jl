@@ -31,8 +31,8 @@ println("\n[1/3] Simulating octamer SMLM data...")
 params = StaticSMLMParams(
     density = 2.0,        # 2 patterns per μm²
     σ_psf = 0.13,         # 130nm PSF width
-    nframes = 500,        # 500 frames
-    framerate = 20.0,     # 20 fps
+    nframes = 10,         # 10 frames → ~5 blinks per emitter, ~40 per octamer
+    framerate = 20.0,     # 20 fps (0.5 second acquisition)
     ndims = 2             # 2D simulation
 )
 
