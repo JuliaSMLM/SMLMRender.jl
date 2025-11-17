@@ -46,6 +46,35 @@ using Pkg
 Pkg.add(url="https://github.com/JuliaSMLM/SMLMRender.jl")
 ```
 
+## API Reference
+
+### Main Functions (All You Need)
+
+**`render(smld; kwargs...)`** - Single-channel rendering
+- Returns `RenderResult2D` with `.image` and metadata
+- Use `filename=...` for direct PNG save
+
+**`render(smlds::Vector; colors, kwargs...)`** - Multi-channel via dispatch
+- Takes vector of SMLD datasets
+- `colors` as symbols (`:red`, `:green`) or RGB
+
+**`export_colorbar(result, filename)`** - Colorbar legends
+- Auto-extracts field range and colormap from result
+- Or manual: `export_colorbar(:turbo, (-500, 500), "Z (nm)", filename)`
+
+**`save_image(filename, image)`** - Direct image save
+- Usually not needed (use `filename` kwarg in `render()`)
+
+### Rendering Strategies
+
+- **`HistogramRender()`** - Fast binning (saturates, black bg)
+- **`GaussianRender()`** - Smooth blobs (intensity-weighted)
+- **`CircleRender(radius_factor, line_width)`** - Uncertainty circles (saturates)
+
+### Result Type
+
+- **`RenderResult2D`** - Contains `.image`, `.field_range`, `.colormap`, `.render_time`
+
 ## Quick Start
 
 ```julia
