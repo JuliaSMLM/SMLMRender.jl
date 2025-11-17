@@ -148,7 +148,8 @@ function render_overlay(smlds::Vector, colors::Vector;
                        zoom::Union{Real, Nothing} = nothing,
                        target::Union{Image2DTarget, Nothing} = nothing,
                        normalize_each::Bool = true,
-                       backend::Symbol = :cpu)
+                       backend::Symbol = :cpu,
+                       filename::Union{String, Nothing} = nothing)
 
     @assert length(smlds) == length(colors) "Number of datasets must match number of colors"
     @assert length(smlds) > 0 "Must provide at least one dataset"
@@ -185,10 +186,64 @@ function render_overlay(smlds::Vector, colors::Vector;
         result .+= img
     end
 
-    # Clip to white
-    result .= clamp.(result, RGB{Float64}(0,0,0), RGB{Float64}(1,1,1))
+    # Clip to white (need to clamp each channel separately)
+    for i in eachindex(result)
+        pixel = result[i]
+        result[i] = RGB(clamp(pixel.r, 0.0, 1.0),
+                       clamp(pixel.g, 0.0, 1.0),
+                       clamp(pixel.b, 0.0, 1.0))
+    end
+
+    # Save to file if requested
+    if filename !== nothing
+        save_image(filename, result)
+    end
 
     return result
+end
+
+"""
+    render(smlds::Vector; colors, kwargs...)
+
+Multi-channel rendering via multiple dispatch.
+
+Render multiple SMLD datasets with different colors and overlay them.
+This is the Julian interface using dispatch on Vector{SMLD}.
+
+# Arguments
+- `smlds::Vector`: Vector of SMLD datasets
+- `colors`: Vector of colors (RGB, Symbol, or ColorType)
+- All other kwargs same as single-channel render()
+
+# Example
+```julia
+# Two-color overlay
+render([smld1, smld2],
+       colors = [colorant"red", colorant"green"],
+       strategy = GaussianRender(),
+       zoom = 20,
+       filename = "overlay.png")
+```
+"""
+function render(smlds::Vector;
+                colors::Vector,
+                strategy::RenderingStrategy = GaussianRender(),
+                pixel_size::Union{Real, Nothing} = nothing,
+                zoom::Union{Real, Nothing} = nothing,
+                target::Union{Image2DTarget, Nothing} = nothing,
+                normalize_each::Bool = true,
+                backend::Symbol = :cpu,
+                filename::Union{String, Nothing} = nothing)
+
+    # Delegate to render_overlay
+    return render_overlay(smlds, colors;
+                         strategy=strategy,
+                         pixel_size=pixel_size,
+                         zoom=zoom,
+                         target=target,
+                         normalize_each=normalize_each,
+                         backend=backend,
+                         filename=filename)
 end
 
 # ============================================================================
