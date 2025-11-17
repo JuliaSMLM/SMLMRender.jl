@@ -1,142 +1,78 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Examples · SMLMRender.jl</title><meta name="title" content="Examples · SMLMRender.jl"/><meta property="og:title" content="Examples · SMLMRender.jl"/><meta property="twitter:title" content="Examples · SMLMRender.jl"/><meta name="description" content="Documentation for SMLMRender.jl."/><meta property="og:description" content="Documentation for SMLMRender.jl."/><meta property="twitter:description" content="Documentation for SMLMRender.jl."/><meta property="og:url" content="https://JuliaSMLM.github.io/SMLMRender.jl/examples/"/><meta property="twitter:url" content="https://JuliaSMLM.github.io/SMLMRender.jl/examples/"/><link rel="canonical" href="https://JuliaSMLM.github.io/SMLMRender.jl/examples/"/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">SMLMRender.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li class="is-active"><a class="tocitem" href>Examples</a><ul class="internal"><li><a class="tocitem" href="#Basic-Usage"><span>Basic Usage</span></a></li><li><a class="tocitem" href="#Rendering-Strategies"><span>Rendering Strategies</span></a></li><li><a class="tocitem" href="#Field-Based-Coloring"><span>Field-Based Coloring</span></a></li><li><a class="tocitem" href="#Multi-Channel-Rendering"><span>Multi-Channel Rendering</span></a></li><li><a class="tocitem" href="#Output-and-Export"><span>Output and Export</span></a></li><li><a class="tocitem" href="#Custom-Targets"><span>Custom Targets</span></a></li><li><a class="tocitem" href="#Performance-Tips"><span>Performance Tips</span></a></li><li><a class="tocitem" href="#Available-Colormaps"><span>Available Colormaps</span></a></li><li><a class="tocitem" href="#Common-Workflows"><span>Common Workflows</span></a></li></ul></li><li><a class="tocitem" href="../api/">API Reference</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Examples</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Examples</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/JuliaSMLM/SMLMRender.jl/blob/main/docs/src/examples.md#" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Examples"><a class="docs-heading-anchor" href="#Examples">Examples</a><a id="Examples-1"></a><a class="docs-heading-anchor-permalink" href="#Examples" title="Permalink"></a></h1><p>This page provides comprehensive examples for all rendering modes in SMLMRender.jl.</p><h2 id="Basic-Usage"><a class="docs-heading-anchor" href="#Basic-Usage">Basic Usage</a><a id="Basic-Usage-1"></a><a class="docs-heading-anchor-permalink" href="#Basic-Usage" title="Permalink"></a></h2><h3 id="Simple-Intensity-Rendering"><a class="docs-heading-anchor" href="#Simple-Intensity-Rendering">Simple Intensity Rendering</a><a id="Simple-Intensity-Rendering-1"></a><a class="docs-heading-anchor-permalink" href="#Simple-Intensity-Rendering" title="Permalink"></a></h3><p>The simplest way to render SMLM data is with intensity-based colormapping:</p><pre><code class="language-julia hljs">using SMLMData, SMLMRender
-
-# Load SMLM data
-smld = load_smld(&quot;data.h5&quot;)
-
-# Render with default settings (GaussianRender, :inferno colormap)
-result = render(smld, zoom=20, filename=&quot;output.png&quot;)
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Examples · SMLMRender.jl</title><meta name="title" content="Examples · SMLMRender.jl"/><meta property="og:title" content="Examples · SMLMRender.jl"/><meta property="twitter:title" content="Examples · SMLMRender.jl"/><meta name="description" content="Documentation for SMLMRender.jl."/><meta property="og:description" content="Documentation for SMLMRender.jl."/><meta property="twitter:description" content="Documentation for SMLMRender.jl."/><meta property="og:url" content="https://JuliaSMLM.github.io/SMLMRender.jl/examples/"/><meta property="twitter:url" content="https://JuliaSMLM.github.io/SMLMRender.jl/examples/"/><link rel="canonical" href="https://JuliaSMLM.github.io/SMLMRender.jl/examples/"/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">SMLMRender.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li class="is-active"><a class="tocitem" href>Examples</a><ul class="internal"><li><a class="tocitem" href="#Setup:-Simulated-Data"><span>Setup: Simulated Data</span></a></li><li><a class="tocitem" href="#Basic-Usage"><span>Basic Usage</span></a></li><li><a class="tocitem" href="#Rendering-Strategies"><span>Rendering Strategies</span></a></li><li><a class="tocitem" href="#Field-Based-Coloring"><span>Field-Based Coloring</span></a></li><li><a class="tocitem" href="#Multi-Channel-Rendering"><span>Multi-Channel Rendering</span></a></li><li><a class="tocitem" href="#Output-and-Export"><span>Output and Export</span></a></li><li><a class="tocitem" href="#Custom-Targets"><span>Custom Targets</span></a></li><li><a class="tocitem" href="#Performance-Tips"><span>Performance Tips</span></a></li><li><a class="tocitem" href="#Available-Colormaps"><span>Available Colormaps</span></a></li><li><a class="tocitem" href="#Common-Workflows"><span>Common Workflows</span></a></li></ul></li><li><a class="tocitem" href="../api/">API Reference</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Examples</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Examples</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/JuliaSMLM/SMLMRender.jl/blob/main/docs/src/examples.md#" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Examples"><a class="docs-heading-anchor" href="#Examples">Examples</a><a id="Examples-1"></a><a class="docs-heading-anchor-permalink" href="#Examples" title="Permalink"></a></h1><p>Examples for rendering modes in SMLMRender.jl.</p><h2 id="Setup:-Simulated-Data"><a class="docs-heading-anchor" href="#Setup:-Simulated-Data">Setup: Simulated Data</a><a id="Setup:-Simulated-Data-1"></a><a class="docs-heading-anchor-permalink" href="#Setup:-Simulated-Data" title="Permalink"></a></h2><p>All examples below use this simulated dataset:</p><pre><code class="language-julia hljs">n_pixels = length(camera.pixel_edges_x) - 1
+pixel_size_um = camera.pixel_edges_x[2] - camera.pixel_edges_x[1]
+fov_um = n_pixels * pixel_size_um
+println(&quot;Dataset: $(length(smld.emitters)) localizations&quot;)
+println(&quot;Field of view: $(round(fov_um, digits=2))μm × $(round(fov_um, digits=2))μm&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Dataset: 79 localizations
+Field of view: 1.6μm × 1.6μm</code></pre><h2 id="Basic-Usage"><a class="docs-heading-anchor" href="#Basic-Usage">Basic Usage</a><a id="Basic-Usage-1"></a><a class="docs-heading-anchor-permalink" href="#Basic-Usage" title="Permalink"></a></h2><h3 id="Simple-Intensity-Rendering"><a class="docs-heading-anchor" href="#Simple-Intensity-Rendering">Simple Intensity Rendering</a><a id="Simple-Intensity-Rendering-1"></a><a class="docs-heading-anchor-permalink" href="#Simple-Intensity-Rendering" title="Permalink"></a></h3><p>The simplest way to render SMLM data is with intensity-based colormapping:</p><pre><code class="language-julia hljs"># Render with default settings (GaussianRender, :inferno colormap)
+result = render(smld, zoom=20)
 
 # Access the image
 img = result.image  # Matrix{RGB{Float64}}
 
 # Check rendering metadata
-println(&quot;Rendered $(result.n_localizations) localizations in $(result.render_time) seconds&quot;)</code></pre><h3 id="Custom-Colormap"><a class="docs-heading-anchor" href="#Custom-Colormap">Custom Colormap</a><a id="Custom-Colormap-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Colormap" title="Permalink"></a></h3><p>Choose from many available colormaps:</p><pre><code class="language-julia hljs"># Classic SMLM hot colormap (black → red → yellow → white)
-result = render(smld, colormap=:hot, zoom=20, filename=&quot;hot.png&quot;)
+println(&quot;Rendered $(result.n_localizations) localizations&quot;)
+println(&quot;Image size: $(size(result.image))&quot;)
+println(&quot;Render time: $(round(result.render_time * 1000, digits=1)) ms&quot;)
+
+# Save and display</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Rendered 79 localizations
+Image size: (267, 223)
+Render time: 3.4 ms</code></pre><p><img src="../basic_render.png" alt="Basic rendering with default settings"/></p><h3 id="Custom-Colormap"><a class="docs-heading-anchor" href="#Custom-Colormap">Custom Colormap</a><a id="Custom-Colormap-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Colormap" title="Permalink"></a></h3><p>Choose from many available colormaps:</p><pre><code class="language-julia hljs"># Classic SMLM hot colormap (black → red → yellow → white)
+result_hot = render(smld, colormap=:hot, zoom=20)
 
 # Inferno colormap (black → purple → orange → yellow)
-result = render(smld, colormap=:inferno, zoom=20, filename=&quot;inferno.png&quot;)
+result_inferno = render(smld, colormap=:inferno, zoom=20)
 
 # Magma colormap (black → purple → pink → yellow)
-result = render(smld, colormap=:magma, zoom=20, filename=&quot;magma.png&quot;)</code></pre><h3 id="Pixel-Size-vs-Zoom"><a class="docs-heading-anchor" href="#Pixel-Size-vs-Zoom">Pixel Size vs Zoom</a><a id="Pixel-Size-vs-Zoom-1"></a><a class="docs-heading-anchor-permalink" href="#Pixel-Size-vs-Zoom" title="Permalink"></a></h3><p>You can specify the output resolution either by pixel size (in nm) or by zoom factor:</p><pre><code class="language-julia hljs"># Specify pixel size directly (10 nm per pixel)
-result = render(smld, pixel_size=10.0, colormap=:inferno, filename=&quot;10nm.png&quot;)
+result_magma = render(smld, colormap=:magma, zoom=20)
+
+println(&quot;Rendered with 3 different colormaps&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Rendered with 3 different colormaps</code></pre><table><tr><th style="text-align: center">Hot</th><th style="text-align: center">Inferno</th><th style="text-align: center">Magma</th></tr><tr><td style="text-align: center"><img src="../colormap_hot.png" alt="Hot colormap"/></td><td style="text-align: center"><img src="../colormap_inferno.png" alt="Inferno colormap"/></td><td style="text-align: center"><img src="../colormap_magma.png" alt="Magma colormap"/></td></tr></table><h3 id="Pixel-Size-vs-Zoom"><a class="docs-heading-anchor" href="#Pixel-Size-vs-Zoom">Pixel Size vs Zoom</a><a id="Pixel-Size-vs-Zoom-1"></a><a class="docs-heading-anchor-permalink" href="#Pixel-Size-vs-Zoom" title="Permalink"></a></h3><p>You can specify the output resolution either by pixel size (in nm) or by zoom factor:</p><pre><code class="language-julia hljs"># Specify pixel size directly (5 nm per pixel)
+result_px = render(smld, pixel_size=5.0, colormap=:inferno)
+println(&quot;Pixel size method: $(size(result_px.image))&quot;)
 
 # Or specify zoom relative to camera pixels
-result = render(smld, zoom=20, colormap=:inferno, filename=&quot;zoom20.png&quot;)</code></pre><h2 id="Rendering-Strategies"><a class="docs-heading-anchor" href="#Rendering-Strategies">Rendering Strategies</a><a id="Rendering-Strategies-1"></a><a class="docs-heading-anchor-permalink" href="#Rendering-Strategies" title="Permalink"></a></h2><h3 id="Histogram-Rendering"><a class="docs-heading-anchor" href="#Histogram-Rendering">Histogram Rendering</a><a id="Histogram-Rendering-1"></a><a class="docs-heading-anchor-permalink" href="#Histogram-Rendering" title="Permalink"></a></h3><p>Fast binning-based rendering. Best for quick visualization and high-density data.</p><pre><code class="language-julia hljs"># Basic histogram rendering
-result = render(smld, 
+result_zoom = render(smld, zoom=20, colormap=:inferno)
+println(&quot;Zoom method: $(size(result_zoom.image))&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Pixel size method: (267, 223)
+Zoom method: (267, 223)</code></pre><h2 id="Rendering-Strategies"><a class="docs-heading-anchor" href="#Rendering-Strategies">Rendering Strategies</a><a id="Rendering-Strategies-1"></a><a class="docs-heading-anchor-permalink" href="#Rendering-Strategies" title="Permalink"></a></h2><h3 id="Histogram-Rendering"><a class="docs-heading-anchor" href="#Histogram-Rendering">Histogram Rendering</a><a id="Histogram-Rendering-1"></a><a class="docs-heading-anchor-permalink" href="#Histogram-Rendering" title="Permalink"></a></h3><p>Fast binning-based rendering.</p><pre><code class="language-julia hljs"># Histogram with time coloring (color by frame number)
+result_hist = render(smld,
     strategy = HistogramRender(),
-    colormap = :inferno,
-    zoom = 10,
-    filename = &quot;histogram.png&quot;)
+    color_by = :frame,           # Temporal dynamics
+    colormap = :turbo,           # High contrast for time
+    zoom = 20)
 
-# Characteristics:
-# - Fastest rendering
-# - No sub-pixel accuracy
-# - Saturates on overlap (bright, punchy colors)
-# - Black background</code></pre><h3 id="Gaussian-Rendering"><a class="docs-heading-anchor" href="#Gaussian-Rendering">Gaussian Rendering</a><a id="Gaussian-Rendering-1"></a><a class="docs-heading-anchor-permalink" href="#Gaussian-Rendering" title="Permalink"></a></h3><p>Renders each localization as a smooth 2D Gaussian blob. Publication-quality rendering.</p><pre><code class="language-julia hljs"># Gaussian rendering with localization precision
-result = render(smld,
+println(&quot;Histogram render: $(size(result_hist.image))&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Histogram render: (267, 223)</code></pre><p><img src="../strategy_histogram.png" alt="Histogram rendering with time coloring"/></p><h3 id="Gaussian-Rendering"><a class="docs-heading-anchor" href="#Gaussian-Rendering">Gaussian Rendering</a><a id="Gaussian-Rendering-1"></a><a class="docs-heading-anchor-permalink" href="#Gaussian-Rendering" title="Permalink"></a></h3><p>Renders each localization as a smooth 2D Gaussian blob.</p><pre><code class="language-julia hljs"># Gaussian with localization precision (uses σ_x, σ_y from data)
+result_gauss = render(smld,
     strategy = GaussianRender(
         n_sigmas = 3.0,                      # Render out to 3σ
-        use_localization_precision = true,   # Use σ_x, σ_y from data
+        use_localization_precision = true,
         normalization = :integral            # Gaussians sum to 1
     ),
     colormap = :hot,
-    zoom = 20,
-    filename = &quot;gaussian_precision.png&quot;)
+    zoom = 20)
 
-# Fixed sigma rendering (all localizations same width)
-result = render(smld,
-    strategy = GaussianRender(
-        n_sigmas = 3.0,
-        use_localization_precision = false,
-        fixed_sigma = 15.0,                  # 15 nm sigma
-        normalization = :integral
-    ),
-    colormap = :inferno,
-    zoom = 20,
-    filename = &quot;gaussian_fixed.png&quot;)
-
-# Maximum normalization (peak = 1 instead of integral = 1)
-result = render(smld,
-    strategy = GaussianRender(
-        n_sigmas = 2.5,
-        use_localization_precision = true,
-        normalization = :maximum             # Peak value = 1
-    ),
-    colormap = :hot,
-    zoom = 20,
-    filename = &quot;gaussian_maximum.png&quot;)</code></pre><h3 id="Circle-Rendering"><a class="docs-heading-anchor" href="#Circle-Rendering">Circle Rendering</a><a id="Circle-Rendering-1"></a><a class="docs-heading-anchor-permalink" href="#Circle-Rendering" title="Permalink"></a></h3><p>Renders each localization as a circle outline. Useful for visualizing uncertainty.</p><pre><code class="language-julia hljs"># 1σ circles (recommended)
-result = render(smld,
+println(&quot;Gaussian render: $(size(result_gauss.image))&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Gaussian render: (267, 223)</code></pre><p><img src="../strategy_gaussian.png" alt="Gaussian rendering - smooth blobs"/></p><h3 id="Circle-Rendering"><a class="docs-heading-anchor" href="#Circle-Rendering">Circle Rendering</a><a id="Circle-Rendering-1"></a><a class="docs-heading-anchor-permalink" href="#Circle-Rendering" title="Permalink"></a></h3><p>Renders each localization as a circle outline. Useful for visualizing uncertainty.</p><pre><code class="language-julia hljs"># 1σ circles with time coloring
+result_circle = render(smld,
     strategy = CircleRender(
         radius_factor = 1.0,                 # 1σ radius
-        line_width = 1.0,                    # 1 pixel line width
-        use_localization_precision = true    # Use σ from data
-    ),
-    colormap = :plasma,
-    zoom = 50,                               # High zoom for visibility
-    filename = &quot;circles_1sigma.png&quot;)
-
-# 2σ circles with thicker lines
-result = render(smld,
-    strategy = CircleRender(
-        radius_factor = 2.0,                 # 2σ radius
-        line_width = 2.5,                    # Thicker lines
+        line_width = 1.0,
         use_localization_precision = true
     ),
-    colormap = :viridis,
-    zoom = 40,
-    filename = &quot;circles_2sigma.png&quot;)
+    color_by = :frame,                       # Temporal dynamics
+    colormap = :turbo,                       # High contrast rainbow
+    zoom = 20)
 
-# Fixed radius circles
-result = render(smld,
-    strategy = CircleRender(
-        radius_factor = 1.0,
-        line_width = 1.0,
-        use_localization_precision = false,
-        fixed_radius = 20.0                  # 20 nm radius
-    ),
-    colormap = :turbo,
-    zoom = 50,
-    filename = &quot;circles_fixed.png&quot;)</code></pre><h2 id="Field-Based-Coloring"><a class="docs-heading-anchor" href="#Field-Based-Coloring">Field-Based Coloring</a><a id="Field-Based-Coloring-1"></a><a class="docs-heading-anchor-permalink" href="#Field-Based-Coloring" title="Permalink"></a></h2><p>Color each localization by a field value (z-depth, photons, frame, etc.).</p><h3 id="Color-by-Z-Depth"><a class="docs-heading-anchor" href="#Color-by-Z-Depth">Color by Z-Depth</a><a id="Color-by-Z-Depth-1"></a><a class="docs-heading-anchor-permalink" href="#Color-by-Z-Depth" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Color by z-depth (default turbo colormap)
-result = render(smld,
-    color_by = :z,
-    zoom = 20,
-    filename = &quot;z_depth.png&quot;)
-
-# With custom colormap
-result = render(smld,
-    color_by = :z,
-    colormap = :plasma,
-    zoom = 20,
-    filename = &quot;z_plasma.png&quot;)
-
-# Export colorbar with auto-extracted metadata
-export_colorbar(result, &quot;z_colorbar.png&quot;)
-
-# Diverging colormap for ±z around focal plane
-result = render(smld,
-    color_by = :z,
-    colormap = :RdBu,
-    zoom = 20,
-    filename = &quot;z_diverging.png&quot;)</code></pre><h3 id="Color-by-Photons"><a class="docs-heading-anchor" href="#Color-by-Photons">Color by Photons</a><a id="Color-by-Photons-1"></a><a class="docs-heading-anchor-permalink" href="#Color-by-Photons" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Color by photon count
-result = render(smld,
-    color_by = :photons,
-    colormap = :viridis,
-    zoom = 20,
-    filename = &quot;photons.png&quot;)
-
-# Export colorbar
-export_colorbar(result, &quot;photons_colorbar.png&quot;)</code></pre><h3 id="Color-by-Frame-(Temporal-Dynamics)"><a class="docs-heading-anchor" href="#Color-by-Frame-(Temporal-Dynamics)">Color by Frame (Temporal Dynamics)</a><a id="Color-by-Frame-(Temporal-Dynamics)-1"></a><a class="docs-heading-anchor-permalink" href="#Color-by-Frame-(Temporal-Dynamics)" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Color by frame number (temporal information)
-result = render(smld,
-    color_by = :frame,
-    colormap = :twilight,                    # Cyclic colormap
-    zoom = 20,
-    filename = &quot;temporal.png&quot;)</code></pre><h3 id="Color-by-Localization-Precision"><a class="docs-heading-anchor" href="#Color-by-Localization-Precision">Color by Localization Precision</a><a id="Color-by-Localization-Precision-1"></a><a class="docs-heading-anchor-permalink" href="#Color-by-Localization-Precision" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Color by σ_x (localization precision)
+println(&quot;Circle render: $(size(result_circle.image))&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Circle render: (267, 223)</code></pre><p><img src="../strategy_circle.png" alt="Circle rendering with time coloring"/></p><h2 id="Field-Based-Coloring"><a class="docs-heading-anchor" href="#Field-Based-Coloring">Field-Based Coloring</a><a id="Field-Based-Coloring-1"></a><a class="docs-heading-anchor-permalink" href="#Field-Based-Coloring" title="Permalink"></a></h2><p>Color each localization by a field value (z-depth, photons, frame, etc.).</p><h3 id="Color-by-Z-Depth"><a class="docs-heading-anchor" href="#Color-by-Z-Depth">Color by Z-Depth</a><a id="Color-by-Z-Depth-1"></a><a class="docs-heading-anchor-permalink" href="#Color-by-Z-Depth" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Color by z-depth (default turbo colormap)
+result_z = render(smld, color_by=:z, zoom=20)
+println(&quot;Z-depth coloring: $(result_z.field_value_range)&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Z-depth coloring: (-0.5561123018814679, 0.4793887237593339)</code></pre><h3 id="Color-by-Photons"><a class="docs-heading-anchor" href="#Color-by-Photons">Color by Photons</a><a id="Color-by-Photons-1"></a><a class="docs-heading-anchor-permalink" href="#Color-by-Photons" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Color by photon count
+result_photons = render(smld, color_by=:photons, colormap=:viridis, zoom=20)
+println(&quot;Photon range: $(result_photons.field_value_range)&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Photon range: (50.000000000000014, 50.00000000000004)</code></pre><h3 id="Color-by-Frame-(Temporal-Dynamics)"><a class="docs-heading-anchor" href="#Color-by-Frame-(Temporal-Dynamics)">Color by Frame (Temporal Dynamics)</a><a id="Color-by-Frame-(Temporal-Dynamics)-1"></a><a class="docs-heading-anchor-permalink" href="#Color-by-Frame-(Temporal-Dynamics)" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Color by frame number (temporal information)
+result_frame = render(smld, color_by=:frame, colormap=:twilight, zoom=20)
+println(&quot;Frame range: $(result_frame.field_value_range)&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Frame range: (3.0, 19.0)</code></pre><h3 id="Color-by-Localization-Precision"><a class="docs-heading-anchor" href="#Color-by-Localization-Precision">Color by Localization Precision</a><a id="Color-by-Localization-Precision-1"></a><a class="docs-heading-anchor-permalink" href="#Color-by-Localization-Precision" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Color by σ_x (localization precision)
 result = render(smld,
     color_by = :σ_x,
     colormap = :plasma,
     zoom = 20,
-    filename = &quot;precision.png&quot;)</code></pre><h3 id="Advanced-Field-Coloring-Options"><a class="docs-heading-anchor" href="#Advanced-Field-Coloring-Options">Advanced Field Coloring Options</a><a id="Advanced-Field-Coloring-Options-1"></a><a class="docs-heading-anchor-permalink" href="#Advanced-Field-Coloring-Options" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Explicit field value range
+    filename = &quot;precision.png&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">RenderResult2D{ColorTypes.RGB{Float64}}(ColorTypes.RGB{Float64}[RGB{Float64}(0.0,0.0,0.0) RGB{Float64}(0.0,0.0,0.0) … RGB{Float64}(0.0,0.0,0.0) RGB{Float64}(0.0,0.0,0.0); RGB{Float64}(0.0,0.0,0.0) RGB{Float64}(0.0,0.0,0.0) … RGB{Float64}(0.0,0.0,0.0) RGB{Float64}(0.0,0.0,0.0); … ; RGB{Float64}(0.0,0.0,0.0) RGB{Float64}(0.0,0.0,0.0) … RGB{Float64}(0.0,0.0,0.0) RGB{Float64}(0.0,0.0,0.0); RGB{Float64}(0.0,0.0,0.0) RGB{Float64}(0.0,0.0,0.0) … RGB{Float64}(0.0,0.0,0.0) RGB{Float64}(0.0,0.0,0.0)], Image2DTarget(223, 267, 5.0, (0.07918044558516005, 1.1921899179859086), (0.21573681246991272, 1.5482605509339038)), RenderOptions{GaussianRender, FieldColorMapping}(GaussianRender(3.0, true, nothing, :integral), FieldColorMapping(:σ_x, :plasma, :auto, (0.01, 0.99)), nothing, :cpu), 0.002474069595336914, 79, (0.01838477631085023, 0.018384776310850233))</code></pre><h3 id="Field-Coloring-Options"><a class="docs-heading-anchor" href="#Field-Coloring-Options">Field Coloring Options</a><a id="Field-Coloring-Options-1"></a><a class="docs-heading-anchor-permalink" href="#Field-Coloring-Options" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Explicit field value range
 result = render(smld,
     color_by = :z,
     colormap = :turbo,
@@ -332,4 +268,4 @@ result = render(smld,
                 color_by = :frame,
                 colormap = :twilight,        # Cyclic for temporal
                 zoom = 20,
-                filename = &quot;temporal.png&quot;)</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../api/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.0 on <span class="colophon-date" title="Monday 17 November 2025 02:52">Monday 17 November 2025</span>. Using Julia version 1.12.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+                filename = &quot;temporal.png&quot;)</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../api/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.0 on <span class="colophon-date" title="Monday 17 November 2025 14:39">Monday 17 November 2025</span>. Using Julia version 1.12.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
