@@ -7,7 +7,9 @@ High-performance rendering for Single Molecule Localization Microscopy (SMLM) da
 [![Build Status](https://github.com/JuliaSMLM/SMLMRender.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/JuliaSMLM/SMLMRender.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/JuliaSMLM/SMLMRender.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/JuliaSMLM/SMLMRender.jl)
 
-SMLMRender.jl is a focused, GPU-ready package for rendering SMLM localization data into 2D images and (future) 3D visualizations. It provides clean, Julian APIs with multiple rendering strategies and flexible color mapping.
+**Part of the [JuliaSMLM](https://github.com/JuliaSMLM) ecosystem.**
+
+SMLMRender.jl renders SMLM localization data (from [SMLMData.jl](https://github.com/JuliaSMLM/SMLMData.jl)) into publication-quality images. It provides clean, Julian APIs with multiple rendering strategies, intensity-weighted field coloring, and direct PNG export.
 
 ## Features
 
@@ -35,16 +37,10 @@ SMLMRender.jl is a focused, GPU-ready package for rendering SMLM localization da
 
 ### Multi-Channel Support
 
-- `render_overlay()` for two-color, three-color, etc. imaging
-- Each channel normalized independently
+- Multi-channel via dispatch: `render([smld1, smld2], colors=[:red, :green], ...)`
+- Each channel normalized independently (Gaussian) or saturates (Circles/Histogram)
 - Additive blending with white saturation clipping
-
-## Installation
-
-```julia
-using Pkg
-Pkg.add(url="https://github.com/JuliaSMLM/SMLMRender.jl")
-```
+- No Colors import needed (use symbols)
 
 ## API Reference
 
@@ -80,8 +76,8 @@ Pkg.add(url="https://github.com/JuliaSMLM/SMLMRender.jl")
 ```julia
 using SMLMData, SMLMRender
 
-# Load data
-smld = load_smld("data.h5")
+# Load SMLM data (from SMLMData.jl)
+smld = load_smld("data.h5")  # Or from SMLMSim, analysis pipeline, etc.
 
 # Simple rendering with direct save (returns RenderResult2D)
 result = render(smld, colormap=:inferno, zoom=20, filename="output.png")
