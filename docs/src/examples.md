@@ -8,27 +8,35 @@ All examples below use this simulated dataset:
 
 ```@setup examples
 using SMLMData, SMLMRender, SMLMSim, MicroscopePSFs
+using Colors
 
-# Create a 16×16 pixel simulation (~1.6μm FOV)
+# Compact FOV to see fine details
 params = StaticSMLMParams(
-    density = 50.0,      # High density for visible structures
-    σ_psf = 0.13,        # 130nm PSF width
-    nframes = 10,        # 10 frames
+    density = 2.0,               # 2 patterns per μm²
+    σ_psf = 0.13,                # 130nm PSF width
+    nframes = 20,                # 2x frames for 2x localizations per emitter
     framerate = 20.0,
-    ndims = 3,           # Enable 3D for z-depth examples
-    zrange = [-0.3, 0.3] # ±300nm z-range
+    ndims = 3,                   # Enable 3D for z-depth examples
+    zrange = [-0.5, 0.5]         # ±500nm z-range
 )
 
-camera = IdealCamera(16, 16, 0.1)  # 16×16 pixels, 100nm/pixel
-pattern = Nmer(n=8, d=0.5)         # Octamer, 500nm diameter
-fluor = GenericFluor(photons=2000.0, k_off=10.0, k_on=0.5)
+camera = IdealCamera(16, 16, 0.1)    # 16×16 pixels, 100nm/pixel = 1.6μm FOV
+pattern = Nmer3D(n=8, d=0.15)        # Octamer, 150nm diameter
+fluor = GenericFluor(photons=1000.0, k_off=10.0, k_on=0.5)  # 1000 photons/localization
 
-smld_true, smld_model, smld = simulate(params; pattern, molecule=fluor, camera)
+smld_true, smld_model, smld_noisy = simulate(params; pattern, molecule=fluor, camera)
+smld = smld_noisy  # Use noisy localizations (realistic)
+
+# Helper to clamp RGB values for saving (saturating strategies can exceed 1.0)
+clamp_rgb(img) = map(px -> RGB(clamp(px.r, 0, 1), clamp(px.g, 0, 1), clamp(px.b, 0, 1)), img)
 ```
 
 ```@example examples
+n_pixels = length(camera.pixel_edges_x) - 1
+pixel_size_um = camera.pixel_edges_x[2] - camera.pixel_edges_x[1]
+fov_um = n_pixels * pixel_size_um
 println("Dataset: $(length(smld.emitters)) localizations")
-println("Field of view: $(camera.nx * camera.pixelsize)μm × $(camera.ny * camera.pixelsize)μm")
+println("Field of view: $(round(fov_um, digits=2))μm × $(round(fov_um, digits=2))μm")
 ```
 
 ## Basic Usage
@@ -38,6 +46,8 @@ println("Field of view: $(camera.nx * camera.pixelsize)μm × $(camera.ny * came
 The simplest way to render SMLM data is with intensity-based colormapping:
 
 ```@example examples
+using FileIO # hide
+
 # Render with default settings (GaussianRender, :inferno colormap)
 result = render(smld, zoom=20)
 
@@ -47,8 +57,14 @@ img = result.image  # Matrix{RGB{Float64}}
 # Check rendering metadata
 println("Rendered $(result.n_localizations) localizations")
 println("Image size: $(size(result.image))")
-println("Pixel size: $(result.pixel_size_nm) nm")
+println("Render time: $(round(result.render_time * 1000, digits=1)) ms")
+
+# Save and display
+save("basic_render.png", result.image) # hide
+nothing # hide
 ```
+
+![Basic rendering with default settings](basic_render.png)
 
 ### Custom Colormap
 
@@ -57,15 +73,23 @@ Choose from many available colormaps:
 ```@example examples
 # Classic SMLM hot colormap (black → red → yellow → white)
 result_hot = render(smld, colormap=:hot, zoom=20)
+save("colormap_hot.png", result_hot.image) # hide
 
 # Inferno colormap (black → purple → orange → yellow)
 result_inferno = render(smld, colormap=:inferno, zoom=20)
+save("colormap_inferno.png", result_inferno.image) # hide
 
 # Magma colormap (black → purple → pink → yellow)
 result_magma = render(smld, colormap=:magma, zoom=20)
+save("colormap_magma.png", result_magma.image) # hide
 
 println("Rendered with 3 different colormaps")
+nothing # hide
 ```
+
+| Hot | Inferno | Magma |
+|:---:|:---:|:---:|
+| ![Hot colormap](colormap_hot.png) | ![Inferno colormap](colormap_inferno.png) | ![Magma colormap](colormap_magma.png) |
 
 ### Pixel Size vs Zoom
 
@@ -88,14 +112,19 @@ println("Zoom method: $(size(result_zoom.image))")
 Fast binning-based rendering.
 
 ```@example examples
-# Histogram: fastest, pixelated, saturates on overlap
+# Histogram with time coloring (color by frame number)
 result_hist = render(smld,
     strategy = HistogramRender(),
-    colormap = :inferno,
-    zoom = 10)
+    color_by = :frame,           # Temporal dynamics
+    colormap = :turbo,           # High contrast for time
+    zoom = 20)
 
+save("strategy_histogram.png", clamp_rgb(result_hist.image)) # hide
 println("Histogram render: $(size(result_hist.image))")
+nothing # hide
 ```
+
+![Histogram rendering with time coloring](strategy_histogram.png)
 
 ### Gaussian Rendering
 
@@ -112,26 +141,35 @@ result_gauss = render(smld,
     colormap = :hot,
     zoom = 20)
 
+save("strategy_gaussian.png", result_gauss.image) # hide
 println("Gaussian render: $(size(result_gauss.image))")
+nothing # hide
 ```
+
+![Gaussian rendering - smooth blobs](strategy_gaussian.png)
 
 ### Circle Rendering
 
 Renders each localization as a circle outline. Useful for visualizing uncertainty.
 
 ```@example examples
-# 1σ circles (high zoom recommended for visibility)
+# 1σ circles with time coloring
 result_circle = render(smld,
     strategy = CircleRender(
         radius_factor = 1.0,                 # 1σ radius
         line_width = 1.0,
         use_localization_precision = true
     ),
-    colormap = :plasma,
-    zoom = 50)
+    color_by = :frame,                       # Temporal dynamics
+    colormap = :turbo,                       # High contrast rainbow
+    zoom = 20)
 
+save("strategy_circle.png", clamp_rgb(result_circle.image)) # hide
 println("Circle render: $(size(result_circle.image))")
+nothing # hide
 ```
+
+![Circle rendering with time coloring](strategy_circle.png)
 
 ## Field-Based Coloring
 
@@ -142,7 +180,7 @@ Color each localization by a field value (z-depth, photons, frame, etc.).
 ```@example examples
 # Color by z-depth (default turbo colormap)
 result_z = render(smld, color_by=:z, zoom=20)
-println("Z-depth coloring: $(result_z.field_range)")
+println("Z-depth coloring: $(result_z.field_value_range)")
 ```
 
 ### Color by Photons
@@ -150,7 +188,7 @@ println("Z-depth coloring: $(result_z.field_range)")
 ```@example examples
 # Color by photon count
 result_photons = render(smld, color_by=:photons, colormap=:viridis, zoom=20)
-println("Photon range: $(result_photons.field_range)")
+println("Photon range: $(result_photons.field_value_range)")
 ```
 
 ### Color by Frame (Temporal Dynamics)
@@ -158,7 +196,7 @@ println("Photon range: $(result_photons.field_range)")
 ```@example examples
 # Color by frame number (temporal information)
 result_frame = render(smld, color_by=:frame, colormap=:twilight, zoom=20)
-println("Frame range: $(result_frame.field_range)")
+println("Frame range: $(result_frame.field_value_range)")
 ```
 
 ### Color by Localization Precision

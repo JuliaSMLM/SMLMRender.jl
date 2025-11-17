@@ -64,7 +64,7 @@ params = StaticSMLMParams(
 )
 
 camera = IdealCamera(16, 16, 0.1)  # 16×16 pixels, 100nm/px
-pattern = Nmer(n=8, d=0.5)         # Octamer, 500nm diameter
+pattern = Nmer2D(n=8, d=0.5)       # Octamer, 500nm diameter
 fluor = GenericFluor(photons=2000.0, k_off=10.0, k_on=0.5)
 
 smld_true, smld_model, smld = simulate(params; pattern, molecule=fluor, camera)
