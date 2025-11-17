@@ -105,12 +105,13 @@ function render_histogram_field(smld, target::Image2DTarget,
             # Get color from colormap
             color = get(cmap, normalized)
 
-            # Weight by intensity (brightness encodes density)
-            weight = min(1.0, intensity[i, j] / maximum(intensity))
-            result[i, j] = color * weight
+            # Use full color, let saturate on overlap (like circles)
+            # Don't normalize - makes colors too dim
+            result[i, j] = color * intensity[i, j]
         end
     end
 
+    # Don't normalize - let saturate for bright colors
     return result
 end
 
