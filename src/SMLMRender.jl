@@ -33,7 +33,7 @@ export ContrastMethod, ContrastOptions
 export RenderOptions, RenderResult2D
 
 # Export main interface
-export render, render_overlay
+export render  # Multi-channel via dispatch on Vector{SMLD}
 
 # Export utilities (may be useful for users)
 export Image2DTarget, create_target_from_smld

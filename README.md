@@ -189,10 +189,8 @@ result = render([smld_channel1, smld_channel2],
 # Three-color overlay
 result = render([smld1, smld2, smld3],
                 colors = [:red, :green, :blue],
-                zoom = 20)
-
-# Or use render_overlay explicitly
-result = render_overlay([smld1, smld2], [:magenta, :cyan], zoom=20)
+                zoom = 20,
+                filename = "three_color.png")
 ```
 
 Each channel is:
