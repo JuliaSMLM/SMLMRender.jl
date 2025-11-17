@@ -152,6 +152,17 @@ t6 = @elapsed render(smld_noisy,
 )
 println("    ✓ $(round(t6*1000, digits=1)) ms")
 
+# Image 7: Histogram + time coloring (fast temporal visualization)
+println("  • Rendering octamer_histogram_time.png...")
+t7 = @elapsed render(smld_noisy,
+    strategy = HistogramRender(),
+    color_by = :frame,
+    colormap = :turbo,  # High contrast for temporal
+    zoom = 10,
+    filename = joinpath(output_dir, "octamer_histogram_time.png")
+)
+println("    ✓ $(round(t7*1000, digits=1)) ms")
+
 # 3. Optional: Create comparison figure (for analysis)
 println("\n[3/3] Creating comparison figure (optional)...")
 
@@ -214,6 +225,7 @@ println("  - octamer_time_plasma.png:    $(round(t3c*1000, digits=1)) ms  (Gauss
 println("  - octamer_photons.png:        $(round(t4*1000, digits=1)) ms  (Gaussian + photons + plasma)")
 println("  - octamer_circles_time.png:   $(round(t5*1000, digits=1)) ms  (Circles + time + turbo)")
 println("  - octamer_histogram.png:      $(round(t6*1000, digits=1)) ms  (Histogram + inferno)")
+println("  - octamer_histogram_time.png: $(round(t7*1000, digits=1)) ms  (Histogram + time + turbo)")
 println("\nRendering Strategies:")
 println("  • GaussianRender:   Smooth, sub-pixel accuracy, publication quality")
 println("  • CircleRender:     Visualize localization uncertainty (1σ circles)")
@@ -230,7 +242,7 @@ println("  render(smld, strategy=..., colormap=..., zoom=20, filename=\"output.p
 println("="^70)
 
 println("\n✓ All images saved to $(output_dir)/")
-println("\nGenerated files (8 core images + 1 comparison):")
+println("\nGenerated files (9 core images + 1 comparison):")
 println("  - octamer_inferno.png         (Gaussian + inferno)")
 println("  - octamer_hot.png             (Gaussian + hot)")
 println("  - octamer_time_viridis.png    (Gaussian + time + viridis)")
@@ -238,5 +250,6 @@ println("  - octamer_time_turbo.png      (Gaussian + time + turbo)")
 println("  - octamer_time_plasma.png     (Gaussian + time + plasma)")
 println("  - octamer_photons.png         (Gaussian + photons + plasma)")
 println("  - octamer_circles_time.png    (Circles + time + turbo, saturates)")
-println("  - octamer_histogram.png       (Histogram + inferno)")
+println("  - octamer_histogram.png       (Histogram + inferno, black bg)")
+println("  - octamer_histogram_time.png  (Histogram + time + turbo)")
 println("  - comparison.png              (side-by-side for analysis)")
