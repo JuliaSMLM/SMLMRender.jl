@@ -54,28 +54,38 @@ using SMLMData, SMLMRender
 # Load data
 smld = load_smld("data.h5")
 
-# Simple rendering with inferno colormap
-img = render(smld, colormap=:inferno, zoom=20)
+# Simple rendering with direct save (returns RenderResult2D)
+result = render(smld, colormap=:inferno, zoom=20, filename="output.png")
 
-# Color by z-depth with viridis
-img = render(smld, color_by=:z, colormap=:viridis, pixel_size=10.0)
+# Access image if needed
+img = result.image  # Matrix{RGB{Float64}}
+
+# Color by z-depth with custom colormap
+result = render(smld, color_by=:z, colormap=:turbo, zoom=20, filename="depth.png")
+
+# Export colorbar with auto metadata
+export_colorbar(result, "colorbar.png")
 
 # Gaussian rendering with localization precision
-img = render(smld,
-    strategy=GaussianRender(n_sigmas=3.0, use_localization_precision=true),
-    colormap=:hot,
-    zoom=15)
+result = render(smld,
+    strategy = GaussianRender(n_sigmas=3.0, use_localization_precision=true),
+    colormap = :hot,
+    zoom = 15,
+    filename = "gaussian.png")
 
-# Circle rendering to show localization precision
-img = render(smld,
-    strategy=CircleRender(radius_factor=2.0, line_width=1.0),
-    color_by=:photons,
-    colormap=:plasma)
+# Circle rendering (1σ circles, saturates on overlap)
+result = render(smld,
+    strategy = CircleRender(radius_factor=1.0, line_width=1.0),
+    color_by = :photons,
+    colormap = :plasma,
+    zoom = 50,  # Higher zoom for thin lines
+    filename = "circles.png")
 
-# Two-color overlay (e.g., red/green STORM)
-img = render_overlay([smld_protein1, smld_protein2],
-                     [colorant"red", colorant"green"],
-                     zoom=20)
+# Two-color overlay using dispatch (no Colors import needed!)
+result = render([smld_protein1, smld_protein2],
+                colors = [:red, :green],
+                zoom = 20,
+                filename = "overlay.png")
 ```
 
 ## Rendering Strategies
@@ -85,47 +95,47 @@ img = render_overlay([smld_protein1, smld_protein2],
 Fastest option. Bins localizations into pixels.
 
 ```julia
-img = render(smld, strategy=HistogramRender(), zoom=20)
+result = render(smld, strategy=HistogramRender(), zoom=10, filename="hist.png")
 ```
 
 ### Gaussian Rendering
 
-Renders each localization as a 2D Gaussian blob.
+Renders each localization as a 2D Gaussian blob with intensity-weighted field coloring.
 
 ```julia
 # Use localization precision (σ_x, σ_y from data)
-strategy = GaussianRender(
-    n_sigmas=3.0,                    # Render ±3σ
-    use_localization_precision=true,
-    fixed_sigma=nothing,
-    normalization=:integral          # :integral or :maximum
-)
+result = render(smld,
+    strategy = GaussianRender(
+        n_sigmas = 3.0,
+        use_localization_precision = true,
+        normalization = :integral
+    ),
+    zoom = 20,
+    filename = "gaussian.png")
 
 # Or use fixed sigma
-strategy = GaussianRender(
-    n_sigmas=3.0,
-    use_localization_precision=false,
-    fixed_sigma=20.0,  # 20 nm
-    normalization=:integral
-)
-
-img = render(smld, strategy=strategy, zoom=15)
+result = render(smld,
+    strategy = GaussianRender(fixed_sigma=15.0),
+    colormap = :hot,
+    zoom = 20)
 ```
 
 ### Circle Rendering
 
-Renders circles at localization precision (useful for visualizing uncertainty).
+Renders circles at localization precision. Best with high zoom (50x) for visibility.
 
 ```julia
-# 2σ circles
-strategy = CircleRender(
-    radius_factor=2.0,  # Multiply σ by 2
-    line_width=1.0,     # Line thickness in pixels
-    use_localization_precision=true,
-    fixed_radius=nothing
-)
-
-img = render(smld, strategy=strategy, color_by=:z, colormap=:viridis)
+# 1σ circles (recommended)
+result = render(smld,
+    strategy = CircleRender(
+        radius_factor = 1.0,
+        line_width = 1.0,
+        use_localization_precision = true
+    ),
+    color_by = :frame,
+    colormap = :turbo,
+    zoom = 50,  # High zoom for thin lines
+    filename = "circles.png")
 ```
 
 ## Color Mapping
@@ -135,79 +145,80 @@ img = render(smld, strategy=strategy, color_by=:z, colormap=:viridis)
 Traditional SMLM: accumulate intensity → apply colormap.
 
 ```julia
-# Just specify colormap
-img = render(smld, colormap=:inferno, zoom=20)
+# Render with inferno (black background)
+result = render(smld, colormap=:inferno, zoom=20, filename="img.png")
 
 # Available colormaps: :inferno, :hot, :viridis, :plasma, :magma, :turbo, etc.
-# See ColorSchemes.jl for full list
 ```
 
 ### Field-Based Colormaps
 
-Color each localization by a field value (z, photons, frame, etc.).
+Color by field value with intensity-weighted coloring (vibrant, punchy colors).
 
 ```julia
-# Color by z-depth
-img = render(smld, color_by=:z, colormap=:viridis, zoom=20)
+# Color by z-depth (default: turbo colormap)
+result = render(smld, color_by=:z, zoom=20, filename="depth.png")
+
+# Color by z-depth with custom colormap
+result = render(smld, color_by=:z, colormap=:plasma, zoom=20)
 
 # Color by photon count
-img = render(smld, color_by=:photons, colormap=:inferno, pixel_size=10.0)
+result = render(smld, color_by=:photons, colormap=:viridis, zoom=20)
 
-# Color by frame number (time series)
-img = render(smld, color_by=:frame, colormap=:twilight, zoom=15)
+# Color by frame number (temporal dynamics)
+result = render(smld, color_by=:frame, colormap=:twilight, zoom=20)
 
-# Color by localization precision (quality)
-img = render(smld, color_by=:σ_x, colormap=:plasma, zoom=20)
+# Export colorbar with auto-extracted metadata
+export_colorbar(result, "colorbar.png")
 ```
 
-### Manual Colors
-
-Fixed color for all localizations (useful for overlays).
-
-```julia
-img = render(smld, color=colorant"red", zoom=20)
-```
+**Note:** Field coloring defaults to `:turbo` (napari standard, high contrast).
 
 ## Multi-Channel Rendering
 
-For two-color or multi-color imaging:
+Multi-color imaging using multiple dispatch (no Colors import needed):
 
 ```julia
-# Two-color overlay
-img = render_overlay([smld_channel1, smld_channel2],
-                     [colorant"red", colorant"green"],
-                     strategy=GaussianRender(),
-                     zoom=20)
+# Two-color overlay using symbols
+result = render([smld_channel1, smld_channel2],
+                colors = [:red, :green],
+                strategy = GaussianRender(),
+                zoom = 20,
+                filename = "overlay.png")
 
 # Three-color overlay
-img = render_overlay([smld1, smld2, smld3],
-                     [:red, :green, :blue],
-                     zoom=15)
+result = render([smld1, smld2, smld3],
+                colors = [:red, :green, :blue],
+                zoom = 20)
+
+# Or use render_overlay explicitly
+result = render_overlay([smld1, smld2], [:magenta, :cyan], zoom=20)
 ```
 
 Each channel is:
 1. Rendered independently
-2. Normalized to [0, 1] based on its own intensity distribution
+2. Normalized (Gaussian) or saturates (Circles/Histogram)
 3. Combined additively
 4. Clipped to white where saturated
 
 ## Recommended Colormaps
 
-### Sequential (for single-valued fields)
-- `:viridis` - Perceptually uniform, colorblind-safe (default)
-- `:cividis` - Optimized for colorblind viewers
-- `:inferno`, `:magma`, `:plasma` - Matplotlib perceptual maps
-- `:turbo` - Google's improved rainbow
-- `:hot` - Classic SMLM colormap
+### Black Backgrounds (for intensity-based)
+- `:inferno` - Black → Purple → Orange → Yellow (recommended)
+- `:hot` - Black → Red → Yellow → White (classic SMLM)
+- `:magma` - Black → Purple → Orange → Yellow
 
-### Diverging (for fields with meaningful center)
-- `:RdBu` - Red-blue
-- `:seismic` - Blue-white-red
+### Field-Based (color by z, time, photons, etc.)
+- `:turbo` - High contrast rainbow (default, napari standard)
+- `:plasma` - Blue → Yellow (high contrast + perceptual)
+- `:viridis` - Purple → Yellow (perceptual uniform)
+- `:twilight` - Cyclic (good for temporal/angular data)
 
-### Cyclic (for periodic fields like angles)
-- `:twilight` - Perceptually uniform cyclic
+### Diverging (for symmetric fields)
+- `:RdBu` - Red ↔ Blue (good for ±z around focal plane)
+- `:coolwarm` - Red ↔ Blue alternative
 
-Use `list_recommended_colormaps()` to see all recommendations.
+Use `list_recommended_colormaps()` to see all options.
 
 ## Architecture
 
