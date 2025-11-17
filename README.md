@@ -13,34 +13,31 @@ SMLMRender.jl renders SMLM localization data (from [SMLMData.jl](https://github.
 
 ## Features
 
-### Rendering Strategies (Phase 1 ✓)
+### Rendering Strategies
 
-- **HistogramRender**: Fast binning-based rendering
-  - Each pixel counts localizations
-  - No sub-pixel accuracy, but very fast
-
-- **GaussianRender**: Smooth Gaussian blob rendering
-  - Sub-pixel accuracy
-  - Publication-quality images
-  - Uses localization precision (σ_x, σ_y) or fixed sigma
-
-- **CircleRender**: Circle outline rendering
-  - Visualize localization precision
-  - Anti-aliased circles at 1σ, 2σ, etc.
+- **HistogramRender** - Fast binning, saturates on overlap
+- **GaussianRender** - Smooth Gaussian blobs with intensity-weighted field coloring
+- **CircleRender** - Anti-aliased circles at localization precision, saturates on overlap
 
 ### Color Mapping
 
-- **Intensity colormaps**: Traditional SMLM rendering (inferno, hot, viridis, etc.)
-- **Field-based coloring**: Color by any EmitterFit field (z-depth, photons, frame, σ_x, etc.)
-- **Manual colors**: Fixed colors for multi-channel overlays
-- **Perceptual colormaps**: Built-in support for ColorSchemes.jl
+- **Intensity-based** - Accumulate counts, apply colormap (inferno, hot, etc.)
+- **Field-based** - Color by emitter field (z-depth, photons, frame, σ_x)
+  - Intensity-weighted (Gaussian): color from field, brightness from overlap
+  - Saturating (Histogram/Circles): full color, saturates where dense
+- **Multi-channel** - Fixed colors for channel overlays
 
-### Multi-Channel Support
+### Colormaps
 
-- Multi-channel via dispatch: `render([smld1, smld2], colors=[:red, :green], ...)`
-- Each channel normalized independently (Gaussian) or saturates (Circles/Histogram)
-- Additive blending with white saturation clipping
-- No Colors import needed (use symbols)
+- Black backgrounds: inferno, hot, magma
+- Field coloring: turbo (default), plasma, viridis, twilight
+- Diverging: RdBu, coolwarm
+
+### Output
+
+- Direct PNG save with auto field range extraction
+- Colorbar export with metadata
+- Multi-channel overlays via dispatch
 
 ## API Reference
 
@@ -242,45 +239,6 @@ Each channel is:
 - `:coolwarm` - Red ↔ Blue alternative
 
 Use `list_recommended_colormaps()` to see all options.
-
-## Architecture
-
-```
-SMLMRender.jl/
-├── types.jl              # Type definitions
-├── utils.jl              # Coordinate transforms, utilities
-├── color/
-│   └── mapping.jl        # Color mapping functions
-├── render/
-│   ├── histogram.jl      # Histogram rendering
-│   ├── gaussian.jl       # Gaussian blob rendering
-│   └── circle.jl         # Circle outline rendering
-└── interface.jl          # Main render() API
-```
-
-## Future Work
-
-### Phase 2: GPU Acceleration
-- CUDA backend for NVIDIA GPUs
-- KernelAbstractions.jl for portable GPU code
-- 10-100× speedup target
-
-### Phase 3: 3D Rendering
-- Volumetric rendering (3D Gaussian blobs)
-- Projection rendering (orthographic, perspective, MIP)
-- Point cloud export for Makie.jl
-
-### Phase 4: Advanced Features
-- Fly-through animations
-- Interactive 3D viewer
-- Tiled rendering for gigapixel images
-
-## Design Principles
-
-1. **Julian**: Multiple dispatch, type stability, composability
-2. **Performance**: GPU-ready, multi-threaded, memory efficient
-3. **Flexibility**: Multiple strategies, color mappings, output formats
-4. **Extensibility**: Easy to add new rendering strategies and color schemes
 
 ## Related Packages
 
