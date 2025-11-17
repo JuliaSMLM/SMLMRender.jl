@@ -19,7 +19,6 @@ using SMLMRender
 using MicroscopePSFs
 using CairoMakie
 using Statistics
-using Colors
 
 println("="^70)
 println("SMLMRender.jl - Batch Image Generation Demo")
