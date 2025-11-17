@@ -95,7 +95,7 @@ function render_gaussian_field(smld, target::Image2DTarget,
         end
 
         # Get color for this emitter
-        color = get_emitter_color(emitter, mapping, value_range)
+        color = get_emitter_color(emitter, mapping; value_range=value_range)
 
         # Render blob, accumulating both intensity and color
         render_gaussian_blob_weighted!(intensity, r_num, g_num, b_num,

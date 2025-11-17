@@ -82,32 +82,32 @@ function get_field_color(emitter, mapping::FieldColorMapping,
 end
 
 """
-    get_emitter_color(emitter, mapping::ColorMapping, value_range=nothing)
+    get_emitter_color(emitter, mapping::ColorMapping; value_range=nothing)
 
 Dispatch function to get color for a single emitter.
 
 # Arguments
 - `emitter`: Emitter object
 - `mapping`: ColorMapping specification
-- `value_range`: Required for FieldColorMapping, ignored otherwise
+- `value_range`: Required for FieldColorMapping, ignored otherwise (keyword argument)
 
 Returns RGB{Float64}
 """
-function get_emitter_color(emitter, mapping::ManualColorMapping, value_range=nothing)
+function get_emitter_color(emitter, mapping::ManualColorMapping; value_range=nothing)
     return mapping.color
 end
 
-function get_emitter_color(emitter, mapping::FieldColorMapping, value_range::Tuple{Float64, Float64})
+function get_emitter_color(emitter, mapping::FieldColorMapping; value_range::Tuple{Float64, Float64})
     return get_field_color(emitter, mapping, value_range)
 end
 
-function get_emitter_color(emitter, mapping::IntensityColorMapping, value_range=nothing)
+function get_emitter_color(emitter, mapping::IntensityColorMapping; value_range=nothing)
     # For intensity mapping, we don't color individual emitters
     # Return white (will be accumulated as grayscale then colored later)
     return RGB{Float64}(1.0, 1.0, 1.0)
 end
 
-function get_emitter_color(emitter, mapping::GrayscaleMapping, value_range=nothing)
+function get_emitter_color(emitter, mapping::GrayscaleMapping; value_range=nothing)
     return RGB{Float64}(1.0, 1.0, 1.0)
 end
 

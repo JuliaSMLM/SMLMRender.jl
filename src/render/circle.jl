@@ -56,7 +56,7 @@ function render_circle_field(smld, target::Image2DTarget,
         end
 
         # Get color
-        color = get_emitter_color(emitter, mapping, value_range)
+        color = get_emitter_color(emitter, mapping; value_range=value_range)
 
         # Draw circle
         draw_circle_outline!(result, emitter, target, radius_nm,
