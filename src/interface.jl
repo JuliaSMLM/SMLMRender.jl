@@ -212,8 +212,8 @@ function _determine_color_mapping(colormap, color_by, color,
     # Determine which mapping to use
     if color_by !== nothing
         # Field-based coloring
-        # Use specified colormap or default to viridis
-        field_colormap = colormap !== nothing ? colormap : :viridis
+        # Use specified colormap or default to turbo (high contrast, napari standard)
+        field_colormap = colormap !== nothing ? colormap : :turbo
         return FieldColorMapping(color_by, field_colormap, field_range,
                                 field_clip_percentiles)
     elseif colormap !== nothing
