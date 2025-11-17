@@ -19,6 +19,7 @@ using SMLMRender
 using MicroscopePSFs
 using CairoMakie
 using Statistics
+using Colors  # Needed for clamp_rgb helper in comparison figure
 
 println("="^70)
 println("SMLMRender.jl - Batch Image Generation Demo")
@@ -163,12 +164,12 @@ function clamp_rgb(img)
     end
 end
 
-# Load the generated images for comparison
-img_inferno = render(smld_noisy, strategy=GaussianRender(), colormap=:inferno, zoom=20)
-img_time = render(smld_noisy, strategy=GaussianRender(), color_by=:frame,
-                  colormap=:twilight, zoom=20)
-img_circles = render(smld_noisy, strategy=CircleRender(1.0, 1.0, true, nothing),
-                     color_by=:frame, colormap=:turbo, zoom=50)
+# Re-render for comparison figure (could also save earlier)
+result_inferno = render(smld_noisy, strategy=GaussianRender(), colormap=:inferno, zoom=20)
+result_time = render(smld_noisy, strategy=GaussianRender(), color_by=:frame,
+                     colormap=:twilight, zoom=20)
+result_circles = render(smld_noisy, strategy=CircleRender(1.0, 1.0, true, nothing),
+                        color_by=:frame, colormap=:turbo, zoom=50)
 
 fig = Figure(size=(1600, 500))
 
@@ -176,21 +177,21 @@ ax1 = Axis(fig[1, 1],
     title = "Gaussian + Inferno\n(intensity colormap)",
     aspect = DataAspect()
 )
-image!(ax1, rotr90(clamp_rgb(img_inferno)))
+image!(ax1, rotr90(clamp_rgb(result_inferno.image)))
 hidedecorations!(ax1)
 
 ax2 = Axis(fig[1, 2],
     title = "Gaussian + Time\n(temporal dynamics)",
     aspect = DataAspect()
 )
-image!(ax2, rotr90(clamp_rgb(img_time)))
+image!(ax2, rotr90(clamp_rgb(result_time.image)))
 hidedecorations!(ax2)
 
 ax3 = Axis(fig[1, 3],
     title = "Circles + Time\n(uncertainty + temporal)",
     aspect = DataAspect()
 )
-image!(ax3, rotr90(clamp_rgb(img_circles)))
+image!(ax3, rotr90(clamp_rgb(result_circles.image)))
 hidedecorations!(ax3)
 
 Label(fig[0, :], "SMLMRender.jl: Rendering Strategy Comparison",

@@ -333,28 +333,25 @@ Complete configuration for rendering.
 - `color_mapping::C`: Color mapping strategy
 - `contrast::Union{ContrastOptions, Nothing}`: Contrast enhancement (optional)
 - `backend::Symbol`: Computation backend (:cpu, :cuda, :metal, :auto)
-- `output_type::Symbol`: Output format (:array, :rgb, :result)
 """
 struct RenderOptions{S<:RenderingStrategy, C<:ColorMapping}
     strategy::S
     color_mapping::C
     contrast::Union{ContrastOptions, Nothing}
     backend::Symbol
-    output_type::Symbol
 
     function RenderOptions(strategy::S, color_mapping::C,
                           contrast::Union{ContrastOptions, Nothing},
-                          backend::Symbol, output_type::Symbol) where {S,C}
+                          backend::Symbol) where {S,C}
         @assert backend in (:cpu, :cuda, :metal, :auto) "Invalid backend"
-        @assert output_type in (:array, :rgb, :result) "Invalid output_type"
-        new{S,C}(strategy, color_mapping, contrast, backend, output_type)
+        new{S,C}(strategy, color_mapping, contrast, backend)
     end
 end
 
 # Convenience constructor
 RenderOptions(strategy::RenderingStrategy, color_mapping::ColorMapping;
-              contrast=nothing, backend=:cpu, output_type=:rgb) =
-    RenderOptions(strategy, color_mapping, contrast, backend, output_type)
+              contrast=nothing, backend=:cpu) =
+    RenderOptions(strategy, color_mapping, contrast, backend)
 
 # ============================================================================
 # Results

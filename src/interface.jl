@@ -53,9 +53,8 @@ function render(smld;
                 field_range::Union{Tuple{Real, Real}, Symbol} = :auto,
                 field_clip_percentiles::Union{Tuple{Real, Real}, Nothing} = (0.01, 0.99),
 
-                # Backend and output
+                # Backend
                 backend::Symbol = :cpu,
-                output_type::Symbol = :rgb,
 
                 # Optional file save
                 filename::Union{String, Nothing} = nothing)
@@ -72,18 +71,17 @@ function render(smld;
                                             field_clip_percentiles)
 
     # Create render options
-    options = RenderOptions(strategy, color_mapping;
-                          backend=backend, output_type=output_type)
+    options = RenderOptions(strategy, color_mapping; backend=backend)
 
     # Dispatch to appropriate rendering function
-    img = _render_dispatch(smld, target, options)
+    result = _render_dispatch(smld, target, options)
 
     # Save to file if requested
     if filename !== nothing
-        save_image(filename, img)
+        save_image(filename, result.image)
     end
 
-    return img
+    return result  # Always return RenderResult2D
 end
 
 """
@@ -100,7 +98,6 @@ function render(smld, x_edges::AbstractVector, y_edges::AbstractVector;
                 field_range::Union{Tuple{Real, Real}, Symbol} = :auto,
                 field_clip_percentiles::Union{Tuple{Real, Real}, Nothing} = (0.01, 0.99),
                 backend::Symbol = :cpu,
-                output_type::Symbol = :rgb,
                 filename::Union{String, Nothing} = nothing)
 
     # Create target from edges
@@ -118,7 +115,7 @@ function render(smld, x_edges::AbstractVector, y_edges::AbstractVector;
     return render(smld; target=target, strategy=strategy, colormap=colormap,
                  color_by=color_by, color=color, clip_percentile=clip_percentile,
                  field_range=field_range, field_clip_percentiles=field_clip_percentiles,
-                 backend=backend, output_type=output_type, filename=filename)
+                 backend=backend, filename=filename)
 end
 
 """
@@ -168,9 +165,9 @@ function render_overlay(smlds::Vector, colors::Vector;
     images = []
     for (smld, color) in zip(smlds, rgb_colors)
         color_mapping = ManualColorMapping(RGB{Float64}(color))
-        options = RenderOptions(strategy, color_mapping; backend=backend, output_type=:rgb)
-        img = _render_dispatch(smld, target, options)
-        push!(images, img)
+        options = RenderOptions(strategy, color_mapping; backend=backend)
+        result = _render_dispatch(smld, target, options)
+        push!(images, result.image)  # Extract image from result
     end
 
     # Normalize each independently if requested
@@ -329,14 +326,8 @@ function _render_dispatch(smld, target::Image2DTarget, options::RenderOptions)
     n_locs = length(smld.emitters)
     result = RenderResult2D(img, target, options, render_time, n_locs, field_value_range)
 
-    # Return based on output_type
-    if options.output_type == :rgb
-        return result.image
-    elseif options.output_type == :result
-        return result  # Return full RenderResult2D with metadata
-    else  # :array
-        return result
-    end
+    # Always return RenderResult2D (user accesses .image when needed)
+    return result
 end
 
 """
