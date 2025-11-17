@@ -18,7 +18,6 @@ using SMLMData
 using SMLMRender
 using MicroscopePSFs
 using Statistics
-using Colors
 
 println("="^70)
 println("Two-Color Multi-Channel Rendering")
@@ -66,7 +65,7 @@ mkpath(output_dir)
 println("  • Rendering two_color_gaussian_redgreen.png...")
 t1 = @elapsed render(
     [smld_noisy_1, smld_noisy_2],
-    colors = [colorant"red", colorant"green"],
+    colors = [:red, :green],  # Symbols - no Colors import needed!
     strategy = GaussianRender(),
     zoom = 20,
     filename = joinpath(output_dir, "two_color_gaussian_redgreen.png")
@@ -77,7 +76,7 @@ println("    ✓ $(round(t1*1000, digits=1)) ms")
 println("  • Rendering two_color_gaussian_magcyan.png...")
 t2 = @elapsed render(
     [smld_noisy_1, smld_noisy_2],
-    colors = [colorant"magenta", colorant"cyan"],
+    colors = [:magenta, :cyan],
     strategy = GaussianRender(),
     zoom = 20,
     filename = joinpath(output_dir, "two_color_gaussian_magcyan.png")
@@ -88,7 +87,7 @@ println("    ✓ $(round(t2*1000, digits=1)) ms")
 println("  • Rendering two_color_circles_redgreen.png...")
 t3 = @elapsed render(
     [smld_noisy_1, smld_noisy_2],
-    colors = [colorant"red", colorant"green"],
+    colors = [:red, :green],
     strategy = CircleRender(
         radius_factor = 1.0,
         line_width = 1.0,
@@ -103,7 +102,7 @@ println("    ✓ $(round(t3*1000, digits=1)) ms")
 println("  • Rendering two_color_circles_magcyan.png...")
 t4 = @elapsed render(
     [smld_noisy_1, smld_noisy_2],
-    colors = [colorant"magenta", colorant"cyan"],
+    colors = [:magenta, :cyan],
     strategy = CircleRender(
         radius_factor = 1.0,
         line_width = 1.0,

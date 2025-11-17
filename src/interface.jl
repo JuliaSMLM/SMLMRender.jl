@@ -235,8 +235,17 @@ function render(smlds::Vector;
                 backend::Symbol = :cpu,
                 filename::Union{String, Nothing} = nothing)
 
+    # Convert color names to RGB (user doesn't need to import Colors)
+    rgb_colors = map(colors) do c
+        if c isa String || c isa Symbol
+            parse(Colorant, string(c))
+        else
+            c  # Already a color
+        end
+    end
+
     # Delegate to render_overlay
-    return render_overlay(smlds, colors;
+    return render_overlay(smlds, rgb_colors;
                          strategy=strategy,
                          pixel_size=pixel_size,
                          zoom=zoom,
