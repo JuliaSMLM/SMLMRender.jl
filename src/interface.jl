@@ -236,6 +236,12 @@ Dispatch to appropriate rendering function based on strategy and color mapping.
 function _render_dispatch(smld, target::Image2DTarget, options::RenderOptions)
     t_start = time()
 
+    # Extract field value range if using field-based coloring (for colorbar metadata)
+    field_value_range = nothing
+    if options.color_mapping isa FieldColorMapping
+        field_value_range = prepare_field_range(smld, options.color_mapping)
+    end
+
     # Dispatch on strategy type
     if options.strategy isa HistogramRender
         img = render_histogram(smld, target, options.color_mapping)
@@ -255,14 +261,16 @@ function _render_dispatch(smld, target::Image2DTarget, options::RenderOptions)
     t_end = time()
     render_time = t_end - t_start
 
-    # Create result
+    # Create result with field metadata
     n_locs = length(smld.emitters)
-    result = RenderResult2D(img, target, options, render_time, n_locs)
+    result = RenderResult2D(img, target, options, render_time, n_locs, field_value_range)
 
     # Return based on output_type
     if options.output_type == :rgb
         return result.image
-    else
+    elseif options.output_type == :result
+        return result  # Return full RenderResult2D with metadata
+    else  # :array
         return result
     end
 end

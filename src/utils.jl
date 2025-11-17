@@ -1,7 +1,9 @@
 # Utility functions for SMLMRender.jl
 
 using Statistics
+using ColorSchemes
 import FileIO  # For save_image function
+import CairoMakie  # For export_colorbar function
 
 """
     physical_to_pixel(x_phys, y_phys, target::Image2DTarget)
@@ -298,6 +300,101 @@ function save_image(filename::String, img::AbstractMatrix{<:Colorant})
 
     # Save directly using FileIO (will dispatch to ImageIO)
     FileIO.save(filename, img_clamped)
+
+    return nothing
+end
+
+"""
+    export_colorbar(result::RenderResult2D, filename::String; kwargs...)
+    export_colorbar(colormap::Symbol, value_range::Tuple, label::String, filename::String; kwargs...)
+
+Export a colorbar legend showing the field value to color mapping.
+
+# Arguments
+- `result::RenderResult2D`: Render result with field metadata (easiest way)
+- OR manually specify: `colormap`, `value_range`, `label`
+- `filename`: Output file path
+
+# Keyword Arguments
+- `orientation::Symbol`: :vertical (default) or :horizontal
+- `size::Tuple{Int,Int}`: (width, height) in pixels, default (80, 400) for vertical
+- `fontsize::Int`: Label font size, default 14
+- `tickfontsize::Int`: Tick label font size, default 12
+
+# Examples
+```julia
+# Easy way: from render result
+result = render(smld, color_by=:z, colormap=:turbo, output_type=:result)
+export_colorbar(result, "colorbar.png")
+
+# Manual way
+export_colorbar(:turbo, (-500, 500), "Z-depth (nm)", "colorbar.png")
+```
+"""
+function export_colorbar(result::RenderResult2D, filename::String; kwargs...)
+    # Extract metadata from result
+    if !(result.options.color_mapping isa FieldColorMapping)
+        error("Colorbar export only supported for field-based coloring (use color_by=...)")
+    end
+
+    mapping = result.options.color_mapping
+    colormap = mapping.colormap
+    value_range = result.field_value_range
+
+    if value_range === nothing
+        error("No field value range available in result")
+    end
+
+    # Create label from field name
+    label = string(mapping.field)
+
+    return export_colorbar(colormap, value_range, label, filename; kwargs...)
+end
+
+function export_colorbar(colormap::Symbol, value_range::Tuple{Real, Real},
+                        label::String, filename::String;
+                        orientation::Symbol = :vertical,
+                        size::Tuple{Int,Int} = (80, 400),
+                        fontsize::Int = 14,
+                        tickfontsize::Int = 12)
+
+    # Get colormap (ColorSchemes imported at top of file)
+    cmap = colorschemes[colormap]
+
+    # Create figure
+    fig = CairoMakie.Figure(size=size, backgroundcolor=:white)
+
+    if orientation == :vertical
+        # Vertical colorbar
+        ax = CairoMakie.Axis(fig[1, 1],
+            ylabel = label,
+            ylabelsize = fontsize,
+            yticklabelsize = tickfontsize
+        )
+
+        # Create colorbar as heatmap
+        data = reshape(range(value_range[1], value_range[2], length=100), 1, :)
+        CairoMakie.heatmap!(ax, [0, 1], range(value_range[1], value_range[2], length=100),
+                           data, colormap=colormap)
+        CairoMakie.hidedecorations!(ax, label=false, ticklabels=false, ticks=false)
+        CairoMakie.hidexdecorations!(ax)
+    else
+        # Horizontal colorbar
+        ax = CairoMakie.Axis(fig[1, 1],
+            xlabel = label,
+            xlabelsize = fontsize,
+            xticklabelsize = tickfontsize
+        )
+
+        data = reshape(range(value_range[1], value_range[2], length=100), :, 1)
+        CairoMakie.heatmap!(ax, range(value_range[1], value_range[2], length=100), [0, 1],
+                           data, colormap=colormap)
+        CairoMakie.hidedecorations!(ax, label=false, ticklabels=false, ticks=false)
+        CairoMakie.hideydecorations!(ax)
+    end
+
+    # Save
+    CairoMakie.save(filename, fig)
 
     return nothing
 end

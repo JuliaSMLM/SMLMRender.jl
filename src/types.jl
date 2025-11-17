@@ -333,7 +333,7 @@ Complete configuration for rendering.
 - `color_mapping::C`: Color mapping strategy
 - `contrast::Union{ContrastOptions, Nothing}`: Contrast enhancement (optional)
 - `backend::Symbol`: Computation backend (:cpu, :cuda, :metal, :auto)
-- `output_type::Symbol`: Output format (:array, :rgb)
+- `output_type::Symbol`: Output format (:array, :rgb, :result)
 """
 struct RenderOptions{S<:RenderingStrategy, C<:ColorMapping}
     strategy::S
@@ -346,7 +346,7 @@ struct RenderOptions{S<:RenderingStrategy, C<:ColorMapping}
                           contrast::Union{ContrastOptions, Nothing},
                           backend::Symbol, output_type::Symbol) where {S,C}
         @assert backend in (:cpu, :cuda, :metal, :auto) "Invalid backend"
-        @assert output_type in (:array, :rgb) "Invalid output_type"
+        @assert output_type in (:array, :rgb, :result) "Invalid output_type"
         new{S,C}(strategy, color_mapping, contrast, backend, output_type)
     end
 end
@@ -378,4 +378,5 @@ struct RenderResult2D{T}
     options::RenderOptions
     render_time::Float64
     n_localizations::Int
+    field_value_range::Union{Tuple{Float64, Float64}, Nothing}  # Actual field range used (for colorbar)
 end

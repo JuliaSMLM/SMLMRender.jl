@@ -129,6 +129,34 @@ t5 = @elapsed render(smld_noisy_3d,
 )
 println("    ✓ $(round(t5*1000, digits=1)) ms")
 
+# Demonstrate colorbar export (NEW FEATURE!)
+println("\n  • Exporting colorbars for z-depth...")
+
+# Export colorbar for turbo (high contrast)
+result_turbo = render(smld_noisy_3d,
+    strategy = GaussianRender(),
+    color_by = :z,
+    colormap = :turbo,
+    zoom = zoom,
+    output_type = :result  # Get full result with metadata
+)
+
+export_colorbar(result_turbo,
+    joinpath(output_dir, "colorbar_z_turbo.png"),
+    orientation = :vertical,
+    size = (100, 400)
+)
+
+# Manual colorbar for viridis (using explicit range)
+z_range_nm = (z_min * 1000, z_max * 1000)  # Convert to nm
+export_colorbar(:viridis, z_range_nm, "Z-depth (nm)",
+    joinpath(output_dir, "colorbar_z_viridis.png"),
+    orientation = :vertical,
+    size = (100, 400)
+)
+
+println("    ✓ Exported colorbars")
+
 # 3. Summary
 println("\n" * "="^70)
 println("3D DEPTH VISUALIZATION SUMMARY")
@@ -154,9 +182,13 @@ println("  Gamma = 0.6 for punchy, vibrant colors")
 println("="^70)
 
 println("\n✓ All 3D depth images saved to $(output_dir)/")
-println("\nGenerated files (5 z-depth colormaps):")
-println("  - octamer_3d_depth_viridis.png    (perceptual uniform)")
-println("  - octamer_3d_depth_turbo.png      (high contrast, NOT perceptual)")
-println("  - octamer_3d_depth_RdBu.png       (diverging red-blue)")
-println("  - octamer_3d_depth_plasma.png     (high contrast + perceptual)")
-println("  - octamer_3d_depth_magma.png      (dark background + perceptual)")
+println("\nGenerated files:")
+println("  Images (5 z-depth colormaps):")
+println("    - octamer_3d_depth_viridis.png    (perceptual uniform)")
+println("    - octamer_3d_depth_turbo.png      (high contrast, NOT perceptual)")
+println("    - octamer_3d_depth_RdBu.png       (diverging red-blue)")
+println("    - octamer_3d_depth_plasma.png     (high contrast + perceptual)")
+println("    - octamer_3d_depth_magma.png      (dark background + perceptual)")
+println("  Colorbars (legends):")
+println("    - colorbar_z_turbo.png            (for turbo images)")
+println("    - colorbar_z_viridis.png          (for viridis images)")
