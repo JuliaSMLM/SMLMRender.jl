@@ -142,11 +142,11 @@ t5 = @elapsed render(smld_noisy,
 )
 println("    ✓ $(round(t5*1000, digits=1)) ms")
 
-# Image 6: Histogram + viridis (fast, pixelated)
+# Image 6: Histogram + inferno (fast, pixelated, black background)
 println("  • Rendering octamer_histogram.png...")
 t6 = @elapsed render(smld_noisy,
     strategy = HistogramRender(),
-    colormap = :viridis,
+    colormap = :inferno,  # Black background (unlike viridis)
     zoom = 10,  # 10nm pixels - fast, intentionally pixelated
     filename = joinpath(output_dir, "octamer_histogram.png")
 )
@@ -213,7 +213,7 @@ println("  - octamer_time_turbo.png:     $(round(t3b*1000, digits=1)) ms  (Gauss
 println("  - octamer_time_plasma.png:    $(round(t3c*1000, digits=1)) ms  (Gaussian + time + plasma)")
 println("  - octamer_photons.png:        $(round(t4*1000, digits=1)) ms  (Gaussian + photons + plasma)")
 println("  - octamer_circles_time.png:   $(round(t5*1000, digits=1)) ms  (Circles + time + turbo)")
-println("  - octamer_histogram.png:      $(round(t6*1000, digits=1)) ms  (Histogram + viridis)")
+println("  - octamer_histogram.png:      $(round(t6*1000, digits=1)) ms  (Histogram + inferno)")
 println("\nRendering Strategies:")
 println("  • GaussianRender:   Smooth, sub-pixel accuracy, publication quality")
 println("  • CircleRender:     Visualize localization uncertainty (1σ circles)")
@@ -238,5 +238,5 @@ println("  - octamer_time_turbo.png      (Gaussian + time + turbo)")
 println("  - octamer_time_plasma.png     (Gaussian + time + plasma)")
 println("  - octamer_photons.png         (Gaussian + photons + plasma)")
 println("  - octamer_circles_time.png    (Circles + time + turbo, saturates)")
-println("  - octamer_histogram.png       (Histogram + viridis)")
+println("  - octamer_histogram.png       (Histogram + inferno)")
 println("  - comparison.png              (side-by-side for analysis)")
