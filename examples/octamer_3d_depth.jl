@@ -118,6 +118,17 @@ t4 = @elapsed render(smld_noisy_3d,
 )
 println("    ✓ $(round(t4*1000, digits=1)) ms")
 
+# Image 5: Z-depth with magma (dark background, perceptual)
+println("  • Rendering octamer_3d_depth_magma.png...")
+t5 = @elapsed render(smld_noisy_3d,
+    strategy = GaussianRender(),
+    color_by = :z,
+    colormap = :magma,       # Black → Purple → Orange → Yellow
+    zoom = zoom,
+    filename = joinpath(output_dir, "octamer_3d_depth_magma.png")
+)
+println("    ✓ $(round(t5*1000, digits=1)) ms")
+
 # 3. Summary
 println("\n" * "="^70)
 println("3D DEPTH VISUALIZATION SUMMARY")
@@ -130,19 +141,22 @@ println("  - octamer_3d_depth_viridis.png:   $(round(t1*1000, digits=1)) ms")
 println("  - octamer_3d_depth_turbo.png:     $(round(t2*1000, digits=1)) ms")
 println("  - octamer_3d_depth_RdBu.png:      $(round(t3*1000, digits=1)) ms")
 println("  - octamer_3d_depth_plasma.png:    $(round(t4*1000, digits=1)) ms")
+println("  - octamer_3d_depth_magma.png:     $(round(t5*1000, digits=1)) ms")
 println("\nColormaps for Z-Depth:")
-println("  • viridis:  Purple (deep) → Yellow (shallow) - perceptual uniform")
-println("  • turbo:    Rainbow spectrum - very high contrast")
+println("  • viridis:  Purple → Yellow - perceptual uniform")
+println("  • turbo:    Rainbow - HIGH CONTRAST (NOT perceptual uniform)")
 println("  • RdBu:     Red ↔ Blue diverging - shows depth symmetry")
-println("  • plasma:   Blue → Yellow - high contrast perceptual")
+println("  • plasma:   Blue → Yellow - high contrast + perceptual uniform")
+println("  • magma:    Black → Purple → Yellow - perceptual uniform, dark bg")
 println("\nIntensity-Weighted Color:")
 println("  Color from z-depth + Brightness from overlap density")
 println("  Gamma = 0.6 for punchy, vibrant colors")
 println("="^70)
 
 println("\n✓ All 3D depth images saved to $(output_dir)/")
-println("\nGenerated files (4 z-depth colormaps):")
+println("\nGenerated files (5 z-depth colormaps):")
 println("  - octamer_3d_depth_viridis.png    (perceptual uniform)")
-println("  - octamer_3d_depth_turbo.png      (high contrast rainbow)")
+println("  - octamer_3d_depth_turbo.png      (high contrast, NOT perceptual)")
 println("  - octamer_3d_depth_RdBu.png       (diverging red-blue)")
-println("  - octamer_3d_depth_plasma.png     (high contrast perceptual)")
+println("  - octamer_3d_depth_plasma.png     (high contrast + perceptual)")
+println("  - octamer_3d_depth_magma.png      (dark background + perceptual)")
