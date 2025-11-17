@@ -1,6 +1,35 @@
 # Examples
 
-This page provides comprehensive examples for all rendering modes in SMLMRender.jl.
+Examples for rendering modes in SMLMRender.jl.
+
+## Setup: Simulated Data
+
+All examples below use this simulated dataset:
+
+```@setup examples
+using SMLMData, SMLMRender, SMLMSim, MicroscopePSFs
+
+# Create a 16×16 pixel simulation (~1.6μm FOV)
+params = StaticSMLMParams(
+    density = 50.0,      # High density for visible structures
+    σ_psf = 0.13,        # 130nm PSF width
+    nframes = 10,        # 10 frames
+    framerate = 20.0,
+    ndims = 3,           # Enable 3D for z-depth examples
+    zrange = [-0.3, 0.3] # ±300nm z-range
+)
+
+camera = IdealCamera(16, 16, 0.1)  # 16×16 pixels, 100nm/pixel
+pattern = Nmer(n=8, d=0.5)         # Octamer, 500nm diameter
+fluor = GenericFluor(photons=2000.0, k_off=10.0, k_on=0.5)
+
+smld_true, smld_model, smld = simulate(params; pattern, molecule=fluor, camera)
+```
+
+```@example examples
+println("Dataset: $(length(smld.emitters)) localizations")
+println("Field of view: $(camera.nx * camera.pixelsize)μm × $(camera.ny * camera.pixelsize)μm")
+```
 
 ## Basic Usage
 
@@ -8,148 +37,100 @@ This page provides comprehensive examples for all rendering modes in SMLMRender.
 
 The simplest way to render SMLM data is with intensity-based colormapping:
 
-```julia
-using SMLMData, SMLMRender
-
-# Load SMLM data
-smld = load_smld("data.h5")
-
+```@example examples
 # Render with default settings (GaussianRender, :inferno colormap)
-result = render(smld, zoom=20, filename="output.png")
+result = render(smld, zoom=20)
 
 # Access the image
 img = result.image  # Matrix{RGB{Float64}}
 
 # Check rendering metadata
-println("Rendered $(result.n_localizations) localizations in $(result.render_time) seconds")
+println("Rendered $(result.n_localizations) localizations")
+println("Image size: $(size(result.image))")
+println("Pixel size: $(result.pixel_size_nm) nm")
 ```
 
 ### Custom Colormap
 
 Choose from many available colormaps:
 
-```julia
+```@example examples
 # Classic SMLM hot colormap (black → red → yellow → white)
-result = render(smld, colormap=:hot, zoom=20, filename="hot.png")
+result_hot = render(smld, colormap=:hot, zoom=20)
 
 # Inferno colormap (black → purple → orange → yellow)
-result = render(smld, colormap=:inferno, zoom=20, filename="inferno.png")
+result_inferno = render(smld, colormap=:inferno, zoom=20)
 
 # Magma colormap (black → purple → pink → yellow)
-result = render(smld, colormap=:magma, zoom=20, filename="magma.png")
+result_magma = render(smld, colormap=:magma, zoom=20)
+
+println("Rendered with 3 different colormaps")
 ```
 
 ### Pixel Size vs Zoom
 
 You can specify the output resolution either by pixel size (in nm) or by zoom factor:
 
-```julia
-# Specify pixel size directly (10 nm per pixel)
-result = render(smld, pixel_size=10.0, colormap=:inferno, filename="10nm.png")
+```@example examples
+# Specify pixel size directly (5 nm per pixel)
+result_px = render(smld, pixel_size=5.0, colormap=:inferno)
+println("Pixel size method: $(size(result_px.image))")
 
 # Or specify zoom relative to camera pixels
-result = render(smld, zoom=20, colormap=:inferno, filename="zoom20.png")
+result_zoom = render(smld, zoom=20, colormap=:inferno)
+println("Zoom method: $(size(result_zoom.image))")
 ```
 
 ## Rendering Strategies
 
 ### Histogram Rendering
 
-Fast binning-based rendering. Best for quick visualization and high-density data.
+Fast binning-based rendering.
 
-```julia
-# Basic histogram rendering
-result = render(smld, 
+```@example examples
+# Histogram: fastest, pixelated, saturates on overlap
+result_hist = render(smld,
     strategy = HistogramRender(),
     colormap = :inferno,
-    zoom = 10,
-    filename = "histogram.png")
+    zoom = 10)
 
-# Characteristics:
-# - Fastest rendering
-# - No sub-pixel accuracy
-# - Saturates on overlap (bright, punchy colors)
-# - Black background
+println("Histogram render: $(size(result_hist.image))")
 ```
 
 ### Gaussian Rendering
 
-Renders each localization as a smooth 2D Gaussian blob. Publication-quality rendering.
+Renders each localization as a smooth 2D Gaussian blob.
 
-```julia
-# Gaussian rendering with localization precision
-result = render(smld,
+```@example examples
+# Gaussian with localization precision (uses σ_x, σ_y from data)
+result_gauss = render(smld,
     strategy = GaussianRender(
         n_sigmas = 3.0,                      # Render out to 3σ
-        use_localization_precision = true,   # Use σ_x, σ_y from data
+        use_localization_precision = true,
         normalization = :integral            # Gaussians sum to 1
     ),
     colormap = :hot,
-    zoom = 20,
-    filename = "gaussian_precision.png")
+    zoom = 20)
 
-# Fixed sigma rendering (all localizations same width)
-result = render(smld,
-    strategy = GaussianRender(
-        n_sigmas = 3.0,
-        use_localization_precision = false,
-        fixed_sigma = 15.0,                  # 15 nm sigma
-        normalization = :integral
-    ),
-    colormap = :inferno,
-    zoom = 20,
-    filename = "gaussian_fixed.png")
-
-# Maximum normalization (peak = 1 instead of integral = 1)
-result = render(smld,
-    strategy = GaussianRender(
-        n_sigmas = 2.5,
-        use_localization_precision = true,
-        normalization = :maximum             # Peak value = 1
-    ),
-    colormap = :hot,
-    zoom = 20,
-    filename = "gaussian_maximum.png")
+println("Gaussian render: $(size(result_gauss.image))")
 ```
 
 ### Circle Rendering
 
 Renders each localization as a circle outline. Useful for visualizing uncertainty.
 
-```julia
-# 1σ circles (recommended)
-result = render(smld,
+```@example examples
+# 1σ circles (high zoom recommended for visibility)
+result_circle = render(smld,
     strategy = CircleRender(
         radius_factor = 1.0,                 # 1σ radius
-        line_width = 1.0,                    # 1 pixel line width
-        use_localization_precision = true    # Use σ from data
-    ),
-    colormap = :plasma,
-    zoom = 50,                               # High zoom for visibility
-    filename = "circles_1sigma.png")
-
-# 2σ circles with thicker lines
-result = render(smld,
-    strategy = CircleRender(
-        radius_factor = 2.0,                 # 2σ radius
-        line_width = 2.5,                    # Thicker lines
+        line_width = 1.0,
         use_localization_precision = true
     ),
-    colormap = :viridis,
-    zoom = 40,
-    filename = "circles_2sigma.png")
+    colormap = :plasma,
+    zoom = 50)
 
-# Fixed radius circles
-result = render(smld,
-    strategy = CircleRender(
-        radius_factor = 1.0,
-        line_width = 1.0,
-        use_localization_precision = false,
-        fixed_radius = 20.0                  # 20 nm radius
-    ),
-    colormap = :turbo,
-    zoom = 50,
-    filename = "circles_fixed.png")
+println("Circle render: $(size(result_circle.image))")
 ```
 
 ## Field-Based Coloring
@@ -158,59 +139,31 @@ Color each localization by a field value (z-depth, photons, frame, etc.).
 
 ### Color by Z-Depth
 
-```julia
+```@example examples
 # Color by z-depth (default turbo colormap)
-result = render(smld,
-    color_by = :z,
-    zoom = 20,
-    filename = "z_depth.png")
-
-# With custom colormap
-result = render(smld,
-    color_by = :z,
-    colormap = :plasma,
-    zoom = 20,
-    filename = "z_plasma.png")
-
-# Export colorbar with auto-extracted metadata
-export_colorbar(result, "z_colorbar.png")
-
-# Diverging colormap for ±z around focal plane
-result = render(smld,
-    color_by = :z,
-    colormap = :RdBu,
-    zoom = 20,
-    filename = "z_diverging.png")
+result_z = render(smld, color_by=:z, zoom=20)
+println("Z-depth coloring: $(result_z.field_range)")
 ```
 
 ### Color by Photons
 
-```julia
+```@example examples
 # Color by photon count
-result = render(smld,
-    color_by = :photons,
-    colormap = :viridis,
-    zoom = 20,
-    filename = "photons.png")
-
-# Export colorbar
-export_colorbar(result, "photons_colorbar.png")
+result_photons = render(smld, color_by=:photons, colormap=:viridis, zoom=20)
+println("Photon range: $(result_photons.field_range)")
 ```
 
 ### Color by Frame (Temporal Dynamics)
 
-```julia
+```@example examples
 # Color by frame number (temporal information)
-result = render(smld,
-    color_by = :frame,
-    colormap = :twilight,                    # Cyclic colormap
-    zoom = 20,
-    filename = "temporal.png")
+result_frame = render(smld, color_by=:frame, colormap=:twilight, zoom=20)
+println("Frame range: $(result_frame.field_range)")
 ```
 
 ### Color by Localization Precision
 
-```julia
+```@example examples
 # Color by σ_x (localization precision)
 result = render(smld,
     color_by = :σ_x,
@@ -219,7 +172,7 @@ result = render(smld,
     filename = "precision.png")
 ```
 
-### Advanced Field Coloring Options
+### Field Coloring Options
 
 ```julia
 # Explicit field value range

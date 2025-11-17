@@ -1,10 +1,10 @@
 # SMLMRender.jl
 
-High-performance rendering for Single Molecule Localization Microscopy (SMLM) data.
+Rendering for Single Molecule Localization Microscopy (SMLM) data.
 
 **Part of the [JuliaSMLM](https://github.com/JuliaSMLM) ecosystem.**
 
-SMLMRender.jl transforms SMLM localization data from [SMLMData.jl](https://github.com/JuliaSMLM/SMLMData.jl) into publication-quality images. It provides clean, Julian APIs with multiple rendering strategies, intensity-weighted field coloring, and direct PNG export.
+SMLMRender.jl transforms SMLM localization data from [SMLMData.jl](https://github.com/JuliaSMLM/SMLMData.jl) into images. It provides multiple rendering strategies, intensity-weighted field coloring, and PNG export.
 
 ## Features
 
@@ -50,23 +50,54 @@ Pkg.develop(url="https://github.com/JuliaSMLM/SMLMRender.jl")
 
 ## Quick Start
 
-```julia
-using SMLMData, SMLMRender
+This tutorial simulates a small super-resolution structure and demonstrates key rendering features.
 
-# Load SMLM data (from SMLMData.jl)
-smld = load_smld("data.h5")  # Or from SMLMSim, analysis pipeline, etc.
+```@example quickstart
+using SMLMData, SMLMRender, SMLMSim, MicroscopePSFs
 
-# Simple rendering with direct save (returns RenderResult2D)
-result = render(smld, colormap=:inferno, zoom=20, filename="output.png")
+# Simulate a small octamer structure (16×16 pixel FOV, ~1.6μm)
+params = StaticSMLMParams(
+    density = 50.0,      # High density for clear structure
+    σ_psf = 0.13,        # 130nm PSF (typical STORM)
+    nframes = 5,         # Short acquisition
+    framerate = 20.0
+)
 
-# Access image if needed
-img = result.image  # Matrix{RGB{Float64}}
+camera = IdealCamera(16, 16, 0.1)  # 16×16 pixels, 100nm/px
+pattern = Nmer(n=8, d=0.5)         # Octamer, 500nm diameter
+fluor = GenericFluor(photons=2000.0, k_off=10.0, k_on=0.5)
 
-# Color by z-depth with custom colormap
-result = render(smld, color_by=:z, colormap=:turbo, zoom=20, filename="depth.png")
+smld_true, smld_model, smld = simulate(params; pattern, molecule=fluor, camera)
+println("Simulated $(length(smld.emitters)) localizations")
+```
 
-# Export colorbar with auto metadata
-export_colorbar(result, "colorbar.png")
+### Rendering Strategies
+
+```@example quickstart
+# Histogram: Fast binning (pixelated but fast)
+hist_result = render(smld, strategy=HistogramRender(), zoom=10)
+
+# Gaussian: Smooth blobs
+gauss_result = render(smld, strategy=GaussianRender(), zoom=10)
+
+# Circle: Visualize localization precision
+circle_result = render(smld, strategy=CircleRender(), zoom=20)
+
+println("Histogram: $(size(hist_result.image))")
+println("Gaussian: $(size(gauss_result.image))")
+println("Circle: $(size(circle_result.image))")
+```
+
+### Color Mapping
+
+```@example quickstart
+# Intensity-based coloring (traditional SMLM)
+intensity_result = render(smld, colormap=:inferno, zoom=10)
+
+# Field-based coloring (color by photon count)
+field_result = render(smld, color_by=:photons, colormap=:viridis, zoom=10)
+
+println("Rendered with intensity and field-based coloring")
 ```
 
 ## Documentation Structure
@@ -76,127 +107,20 @@ export_colorbar(result, "colorbar.png")
 
 ## Main Interface
 
-The package provides a simple, consistent interface:
+```@example quickstart
+# Single-channel rendering
+result = render(smld, zoom=10)
 
-**Single-channel rendering:**
-```julia
-result = render(smld; kwargs...)
+# Multi-channel rendering (no Colors import needed)
+# result = render([smld1, smld2], colors=[:red, :green], zoom=10)
+
+# Export utilities
+# export_colorbar(result, "colorbar.png")
+# save_image("output.png", result.image)
+nothing # hide
 ```
 
-**Multi-channel rendering via dispatch:**
-```julia
-result = render([smld1, smld2]; colors=[:red, :green], kwargs...)
-```
-
-**Export utilities:**
-```julia
-export_colorbar(result, filename)
-save_image(filename, image)
-```
-
-## Rendering Strategies
-
-### HistogramRender
-
-Fastest option. Bins localizations into pixels. Saturates on overlap for bright, punchy colors.
-
-```julia
-result = render(smld, strategy=HistogramRender(), zoom=10, filename="hist.png")
-```
-
-### GaussianRender
-
-Renders each localization as a 2D Gaussian blob with intensity-weighted field coloring. Provides smooth, publication-quality images.
-
-```julia
-# Use localization precision (σ_x, σ_y from data)
-result = render(smld,
-    strategy = GaussianRender(
-        n_sigmas = 3.0,
-        use_localization_precision = true,
-        normalization = :integral
-    ),
-    zoom = 20,
-    filename = "gaussian.png")
-```
-
-### CircleRender
-
-Renders circles at localization precision. Best with high zoom (50x) for visibility. Saturates on overlap.
-
-```julia
-# 1σ circles (recommended)
-result = render(smld,
-    strategy = CircleRender(
-        radius_factor = 1.0,
-        line_width = 1.0,
-        use_localization_precision = true
-    ),
-    color_by = :frame,
-    colormap = :turbo,
-    zoom = 50,
-    filename = "circles.png")
-```
-
-## Color Mapping
-
-### Intensity Colormaps
-
-Traditional SMLM: accumulate intensity → apply colormap.
-
-```julia
-# Render with inferno (black background)
-result = render(smld, colormap=:inferno, zoom=20, filename="img.png")
-
-# Available: :inferno, :hot, :viridis, :plasma, :magma, :turbo, etc.
-```
-
-### Field-Based Colormaps
-
-Color by field value with intensity-weighted coloring (vibrant, punchy colors).
-
-```julia
-# Color by z-depth (default: turbo colormap)
-result = render(smld, color_by=:z, zoom=20, filename="depth.png")
-
-# Color by photon count
-result = render(smld, color_by=:photons, colormap=:viridis, zoom=20)
-
-# Export colorbar with auto-extracted metadata
-export_colorbar(result, "colorbar.png")
-```
-
-### Multi-Channel Rendering
-
-Multi-color imaging using multiple dispatch (no Colors import needed):
-
-```julia
-# Two-color overlay using symbols
-result = render([smld_channel1, smld_channel2],
-                colors = [:red, :green],
-                strategy = GaussianRender(),
-                zoom = 20,
-                filename = "overlay.png")
-```
-
-## Recommended Colormaps
-
-### Black Backgrounds (for intensity-based)
-- `:inferno` - Black → Purple → Orange → Yellow (recommended)
-- `:hot` - Black → Red → Yellow → White (classic SMLM)
-- `:magma` - Black → Purple → Orange → Yellow
-
-### Field-Based (color by z, time, photons, etc.)
-- `:turbo` - High contrast rainbow (default, napari standard)
-- `:plasma` - Blue → Yellow (high contrast + perceptual)
-- `:viridis` - Purple → Yellow (perceptual uniform)
-- `:twilight` - Cyclic (good for temporal/angular data)
-
-### Diverging (for symmetric fields)
-- `:RdBu` - Red ↔ Blue (good for ±z around focal plane)
-- `:coolwarm` - Red ↔ Blue alternative
-
-Use [`list_recommended_colormaps`](@ref) to see all options.
+For detailed examples of rendering strategies and color mapping options, see the [Examples](@ref) page.
 
 ## Related Packages
 
