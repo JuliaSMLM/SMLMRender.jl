@@ -34,6 +34,20 @@ SMLMRender.jl transforms SMLM localization data from [SMLMData.jl](https://githu
 - Colorbar export with metadata
 - Multi-channel overlays via dispatch
 
+### Resolution Control
+
+Two modes for specifying output resolution:
+
+- **`zoom`**: Renders exact camera FOV with subdivided pixels
+  - `zoom=10` with 128×128 camera → exactly 1280×1280 output
+  - Output range matches camera FOV exactly
+  - Predictable, reproducible sizes
+
+- **`pixel_size`**: Uses data bounds with margin
+  - Output size varies based on localization positions
+  - Useful for cropping to regions of interest
+  - Specify in nm (e.g., `pixel_size=10.0`)
+
 ## Installation
 
 ```julia

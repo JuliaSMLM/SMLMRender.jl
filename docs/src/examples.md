@@ -93,16 +93,28 @@ nothing # hide
 
 ### Pixel Size vs Zoom
 
-You can specify the output resolution either by pixel size (in nm) or by zoom factor:
+Two modes for controlling output resolution:
+
+**zoom**: Renders exact camera FOV with `camera_pixels × zoom` output
+- `zoom=20` with 16×16 camera → exactly 320×320 pixels
+- Output range = camera FOV (no cropping)
+- Predictable, reproducible sizes
+
+**pixel_size**: Uses data bounds with margin (variable size)
+- Output crops to where localizations fell
+- Size depends on data distribution
+- Specify in nm
 
 ```@example examples
-# Specify pixel size directly (5 nm per pixel)
-result_px = render(smld, pixel_size=5.0, colormap=:inferno)
-println("Pixel size method: $(size(result_px.image))")
-
-# Or specify zoom relative to camera pixels
+# zoom: Exact camera FOV (16×16 camera → 320×320 output)
 result_zoom = render(smld, zoom=20, colormap=:inferno)
-println("Zoom method: $(size(result_zoom.image))")
+println("Zoom (camera FOV): $(size(result_zoom.image))")
+println("  Range: x=$(result_zoom.target.x_range), y=$(result_zoom.target.y_range)")
+
+# pixel_size: Data bounds + margin (variable size)
+result_px = render(smld, pixel_size=5.0, colormap=:inferno)
+println("Pixel size (data bounds): $(size(result_px.image))")
+println("  Range: x=$(round.(result_px.target.x_range, digits=2)), y=$(round.(result_px.target.y_range, digits=2))")
 ```
 
 ## Rendering Strategies

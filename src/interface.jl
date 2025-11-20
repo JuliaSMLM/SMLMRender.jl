@@ -8,30 +8,39 @@ using Colors
 Main rendering interface using keyword arguments for convenient usage.
 
 # Keyword Arguments
+
+**Resolution (choose one):**
+- `zoom`: Renders exact camera FOV with `camera_pixels × zoom` output.
+  Example: zoom=10 with 128×128 camera → exactly 1280×1280 pixels
+- `pixel_size`: Pixel size in nm, uses data bounds + margin (variable output size)
+- `target`: Explicit Image2DTarget (advanced)
+
+**Rendering:**
 - `strategy`: RenderingStrategy (default: GaussianRender())
-- `pixel_size`: Pixel size in nm (overrides zoom)
-- `zoom`: Zoom factor relative to camera pixels
-- `colormap`: Symbol for colormap name (for intensity mapping)
-- `color_by`: Field symbol for field-based coloring
-- `color`: Manual RGB color
-- `clip_percentile`: Percentile for intensity clipping (default: 0.999)
 - `backend`: :cpu, :cuda, :metal, or :auto (default: :cpu)
-- `output_type`: :rgb or :array (default: :rgb)
+
+**Color Mapping (mutually exclusive):**
+- `colormap`: Symbol for intensity-based coloring (e.g., :inferno, :hot, :viridis)
+- `color_by`: Field symbol for field-based coloring (:z, :photons, :frame, :σ_x, etc.)
+- `color`: Manual RGB color
+
+**Options:**
+- `clip_percentile`: Percentile for intensity clipping (default: 0.999)
+- `filename`: Save directly to file if provided
 
 # Examples
 ```julia
-# Simple intensity render with inferno colormap
+# Render exact camera FOV with 20× resolution
 img = render(smld, colormap=:inferno, zoom=20)
 
-# Color by z-depth
+# Render data bounds with 10nm pixels (variable output size)
 img = render(smld, color_by=:z, colormap=:viridis, pixel_size=10.0)
 
-# Manual red color
+# Manual red color with specific zoom
 img = render(smld, color=colorant"red", zoom=15)
 
-# Circle rendering
-img = render(smld, strategy=CircleRender(2.0, 1.0, true, nothing),
-            color_by=:photons, colormap=:plasma)
+# Circle rendering with field coloring
+img = render(smld, strategy=CircleRender(), color_by=:photons, colormap=:plasma, zoom=20)
 ```
 """
 function render(smld;

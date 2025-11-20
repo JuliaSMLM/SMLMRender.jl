@@ -24,7 +24,7 @@ using SMLMData, SMLMRender
 # Load data
 smld = load_smld("data.h5")
 
-# Render with intensity colormap
+# Render with intensity colormap (zoom=20 means 20 output pixels per camera pixel)
 render(smld, colormap=:inferno, zoom=20, filename="output.png")
 
 # Render colored by z-depth
@@ -32,6 +32,22 @@ render(smld, color_by=:z, colormap=:turbo, zoom=20, filename="depth.png")
 
 # Multi-channel overlay
 render([smld1, smld2], colors=[:red, :green], zoom=20, filename="overlay.png")
+```
+
+### Output Resolution
+
+Two ways to specify output resolution:
+
+```julia
+# zoom: Renders exact camera FOV with subdivided pixels
+# - 128×128 camera with zoom=10 → exactly 1280×1280 output
+# - Output range matches camera FOV exactly
+render(smld, zoom=10)
+
+# pixel_size: Uses data bounds with margin (variable output size)
+# - Output size depends on where localizations fell
+# - Useful for cropping to specific regions
+render(smld, pixel_size=10.0)  # 10nm per pixel
 ```
 
 ### Rendering Strategies
