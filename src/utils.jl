@@ -56,45 +56,64 @@ end
 """
     create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, margin=0.05)
 
-Automatically create an Image2DTarget from SMLD data bounds.
+Create an Image2DTarget for rendering.
+
+When `zoom` is specified with camera data, renders the EXACT camera FOV with
+subdivided pixels (camera_pixels × zoom). When `pixel_size` is specified,
+uses data bounds with margin.
 
 # Arguments
 - `smld`: SMLD dataset (must have .emitters field)
-- `pixel_size`: Pixel size in nm (overrides zoom)
-- `zoom`: Zoom factor (pixels per camera pixel)
-- `margin`: Fractional margin to add around data (default: 5%)
+- `pixel_size`: Pixel size in nm (uses data bounds + margin)
+- `zoom`: Zoom factor - renders exact camera FOV with camera_pixels × zoom output
+- `margin`: Fractional margin for data bounds mode (default: 5%)
 
 Either `pixel_size` or `zoom` must be specified.
 """
 function create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, margin=0.05)
     @assert pixel_size !== nothing || zoom !== nothing "Must specify either pixel_size or zoom"
 
-    # Get data bounds in μm
-    emitters = smld.emitters
-    x_coords = [e.x for e in emitters]
-    y_coords = [e.y for e in emitters]
+    # Mode 1: zoom specified - use EXACT camera FOV
+    if zoom !== nothing
+        @assert hasfield(typeof(smld), :camera) "zoom requires smld.camera"
 
-    x_min, x_max = extrema(x_coords)
-    y_min, y_max = extrema(y_coords)
-
-    # Add margin
-    x_span = x_max - x_min
-    y_span = y_max - y_min
-    x_min -= margin * x_span
-    x_max += margin * x_span
-    y_min -= margin * y_span
-    y_max += margin * y_span
-
-    # Determine pixel size
-    if pixel_size === nothing
-        # Get camera pixel size from smld
-        camera_pixel_size = get_camera_pixel_size(smld.camera)  # nm
+        camera = smld.camera
+        camera_pixel_size = get_camera_pixel_size(camera)  # nm
         pixel_size = camera_pixel_size / zoom
-    end
 
-    # Calculate image dimensions
-    width = ceil(Int, (x_max - x_min) * 1000 / pixel_size)
-    height = ceil(Int, (y_max - y_min) * 1000 / pixel_size)
+        # Use exact camera FOV
+        x_min = camera.pixel_edges_x[1]
+        x_max = camera.pixel_edges_x[end]
+        y_min = camera.pixel_edges_y[1]
+        y_max = camera.pixel_edges_y[end]
+
+        # Exact dimensions: n_camera_pixels × zoom
+        n_camera_px_x = length(camera.pixel_edges_x) - 1
+        n_camera_px_y = length(camera.pixel_edges_y) - 1
+        width = n_camera_px_x * zoom
+        height = n_camera_px_y * zoom
+
+    # Mode 2: pixel_size specified - use data bounds + margin
+    else
+        emitters = smld.emitters
+        x_coords = [e.x for e in emitters]
+        y_coords = [e.y for e in emitters]
+
+        x_min, x_max = extrema(x_coords)
+        y_min, y_max = extrema(y_coords)
+
+        # Add margin
+        x_span = x_max - x_min
+        y_span = y_max - y_min
+        x_min -= margin * x_span
+        x_max += margin * x_span
+        y_min -= margin * y_span
+        y_max += margin * y_span
+
+        # Calculate image dimensions
+        width = ceil(Int, (x_max - x_min) * 1000 / pixel_size)
+        height = ceil(Int, (y_max - y_min) * 1000 / pixel_size)
+    end
 
     return Image2DTarget(width, height, pixel_size, (x_min, x_max), (y_min, y_max))
 end
