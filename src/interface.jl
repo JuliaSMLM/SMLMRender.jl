@@ -15,6 +15,10 @@ Main rendering interface using keyword arguments for convenient usage.
 - `pixel_size`: Pixel size in nm, uses data bounds + margin (variable output size)
 - `target`: Explicit Image2DTarget (advanced)
 
+**Region of Interest:**
+- `roi`: Camera pixel ranges as `(x_range, y_range)`. Use `:` for full range.
+  Example: `roi=(430:860, 1:256)` or `roi=(430:860, :)` for full y
+
 **Rendering:**
 - `strategy`: RenderingStrategy (default: GaussianRender())
 - `backend`: :cpu, :cuda, :metal, or :auto (default: :cpu)
@@ -25,13 +29,16 @@ Main rendering interface using keyword arguments for convenient usage.
 - `color`: Manual RGB color
 
 **Options:**
-- `clip_percentile`: Percentile for intensity clipping (default: 0.999)
+- `clip_percentile`: Percentile for intensity clipping (default: 0.99)
 - `filename`: Save directly to file if provided
 
 # Examples
 ```julia
 # Render exact camera FOV with 20× resolution
 img = render(smld, colormap=:inferno, zoom=20)
+
+# Render ROI (camera pixels 430-860 in x, full y) at 20× zoom
+img = render(smld, colormap=:inferno, zoom=20, roi=(430:860, :))
 
 # Render data bounds with 10nm pixels (variable output size)
 img = render(smld, color_by=:z, colormap=:viridis, pixel_size=10.0)
@@ -50,6 +57,7 @@ function render(smld;
                 # Target specification
                 pixel_size::Union{Real, Nothing} = nothing,
                 zoom::Union{Real, Nothing} = nothing,
+                roi::Union{Tuple{UnitRange{<:Integer}, UnitRange{<:Integer}}, Tuple{UnitRange{<:Integer}, Colon}, Tuple{Colon, UnitRange{<:Integer}}, Nothing} = nothing,
                 target::Union{Image2DTarget, Nothing} = nothing,
 
                 # Color mapping (mutually exclusive)
@@ -58,7 +66,7 @@ function render(smld;
                 color::Union{RGB, Nothing} = nothing,
 
                 # Color mapping options
-                clip_percentile::Real = 0.999,
+                clip_percentile::Real = 0.99,
                 field_range::Union{Tuple{Real, Real}, Symbol} = :auto,
                 field_clip_percentiles::Union{Tuple{Real, Real}, Nothing} = (0.01, 0.99),
 
@@ -71,7 +79,7 @@ function render(smld;
     # Create target if not provided
     if target === nothing
         @assert pixel_size !== nothing || zoom !== nothing "Must specify pixel_size, zoom, or target"
-        target = create_target_from_smld(smld; pixel_size=pixel_size, zoom=zoom)
+        target = create_target_from_smld(smld; pixel_size=pixel_size, zoom=zoom, roi=roi)
     end
 
     # Determine color mapping
@@ -103,7 +111,7 @@ function render(smld, x_edges::AbstractVector, y_edges::AbstractVector;
                 colormap::Union{Symbol, Nothing} = nothing,
                 color_by::Union{Symbol, Nothing} = nothing,
                 color::Union{RGB, Nothing} = nothing,
-                clip_percentile::Real = 0.999,
+                clip_percentile::Real = 0.99,
                 field_range::Union{Tuple{Real, Real}, Symbol} = :auto,
                 field_clip_percentiles::Union{Tuple{Real, Real}, Nothing} = (0.01, 0.99),
                 backend::Symbol = :cpu,
@@ -319,6 +327,8 @@ function _render_dispatch(smld, target::Image2DTarget, options::RenderOptions)
         img = render_gaussian(smld, target, options.strategy, options.color_mapping)
     elseif options.strategy isa CircleRender
         img = render_circle(smld, target, options.strategy, options.color_mapping)
+    elseif options.strategy isa EllipseRender
+        img = render_ellipse(smld, target, options.strategy, options.color_mapping)
     else
         error("Unsupported rendering strategy: $(typeof(options.strategy))")
     end
