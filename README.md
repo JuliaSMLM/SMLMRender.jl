@@ -48,6 +48,11 @@ render(smld, zoom=10)
 # - Output size depends on where localizations fell
 # - Useful for cropping to specific regions
 render(smld, pixel_size=10.0)  # 10nm per pixel
+
+# roi: Render a subset of the camera FOV (only with zoom mode)
+# - Specify camera pixel ranges as (x_range, y_range)
+# - Use : for full range on an axis
+render(smld, zoom=20, roi=(430:860, :))  # x pixels 430-860, full y
 ```
 
 ### Rendering Strategies

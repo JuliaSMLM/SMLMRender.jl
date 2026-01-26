@@ -48,6 +48,11 @@ Two modes for specifying output resolution:
   - Useful for cropping to regions of interest
   - Specify in nm (e.g., `pixel_size=10.0`)
 
+- **`roi`**: Region of interest (zoom mode only)
+  - Render a subset of the camera FOV
+  - Specify camera pixel ranges: `roi=(x_range, y_range)`
+  - Use `:` for full range on an axis: `roi=(430:860, :)`
+
 ## Installation
 
 ```julia
