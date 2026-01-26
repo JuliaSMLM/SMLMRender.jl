@@ -188,7 +188,8 @@ function render_overlay(smlds::Vector, colors::Vector;
     end
 
     # Normalize each independently if requested
-    if normalize_each
+    # Skip normalization for outline renders (Circle/Ellipse) - they draw at full intensity
+    if normalize_each && !(strategy isa CircleRender || strategy isa EllipseRender)
         for i in eachindex(images)
             images[i] = _normalize_rgb_image(images[i])
         end

@@ -178,31 +178,41 @@ end
     draw_antialiased_point_grayscale!(img::Matrix{Float64}, x, y, thickness)
 
 Draw an anti-aliased point on grayscale image.
+
+Primary pixel gets full intensity, neighbors get AA fringe for smooth edges.
 """
 function draw_antialiased_point_grayscale!(img::Matrix{Float64}, x::Real, y::Real,
                                           thickness::Real)
-    i0 = floor(Int, y)
-    j0 = floor(Int, x)
-
-    fy = y - i0
-    fx = x - j0
-
-    weights = [
-        (1 - fx) * (1 - fy),
-        fx * (1 - fy),
-        (1 - fx) * fy,
-        fx * fy
-    ]
-
-    offsets = [(0, 0), (0, 1), (1, 0), (1, 1)]
+    # Get nearest pixel coordinates
+    i0 = round(Int, y)
+    j0 = round(Int, x)
 
     thickness_factor = min(1.0, thickness)
 
-    for (w, (di, dj)) in zip(weights, offsets)
-        i = i0 + di
-        j = j0 + dj
-        if 1 <= i <= size(img, 1) && 1 <= j <= size(img, 2)
-            img[i, j] += w * thickness_factor
+    # Primary pixel gets full intensity
+    if 1 <= i0 <= size(img, 1) && 1 <= j0 <= size(img, 2)
+        img[i0, j0] += thickness_factor
+    end
+
+    # AA fringe to neighbors based on sub-pixel position
+    fy = y - i0  # ranges from -0.5 to 0.5
+    fx = x - j0
+
+    aa_strength = 0.3 * thickness_factor
+
+    # Horizontal neighbors
+    if abs(fx) > 0.1
+        j_neighbor = fx > 0 ? j0 + 1 : j0 - 1
+        if 1 <= i0 <= size(img, 1) && 1 <= j_neighbor <= size(img, 2)
+            img[i0, j_neighbor] += aa_strength * abs(fx)
+        end
+    end
+
+    # Vertical neighbors
+    if abs(fy) > 0.1
+        i_neighbor = fy > 0 ? i0 + 1 : i0 - 1
+        if 1 <= i_neighbor <= size(img, 1) && 1 <= j0 <= size(img, 2)
+            img[i_neighbor, j0] += aa_strength * abs(fy)
         end
     end
 end
