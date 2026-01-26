@@ -15,9 +15,14 @@ localization precision (radius = σ).
 - `smld`: SMLD dataset with .emitters field
 - `target`: Image2DTarget specifying output dimensions
 - `strategy`: CircleRender strategy parameters
-- `color_mapping`: ColorMapping specification
+- `color_mapping`: ColorMapping specification (ManualColorMapping or FieldColorMapping)
 
 Returns Matrix{RGB{Float64}}
+
+# Note
+IntensityColorMapping is not supported for circle rendering. Use `color=` for
+a single color, or `color_by=:field` with `colormap=` to color each circle
+by a field value.
 """
 function render_circle(smld, target::Image2DTarget, strategy::CircleRender,
                       color_mapping::ColorMapping)
@@ -26,9 +31,7 @@ function render_circle(smld, target::Image2DTarget, strategy::CircleRender,
     elseif color_mapping isa ManualColorMapping
         return render_circle_manual(smld, target, strategy, color_mapping)
     elseif color_mapping isa IntensityColorMapping
-        # For circle rendering, intensity colormap doesn't make much sense
-        # Fall back to grayscale accumulation then colormap
-        return render_circle_intensity(smld, target, strategy, color_mapping)
+        error("IntensityColorMapping not supported for CircleRender. Use `color=` for single color, or `color_by=:field` with `colormap=` to color by field value.")
     else
         error("Unsupported color mapping type for circle render")
     end
@@ -91,34 +94,6 @@ function render_circle_manual(smld, target::Image2DTarget,
     return result
 end
 
-"""
-    render_circle_intensity(smld, target, strategy, mapping::IntensityColorMapping)
-
-Circle render with intensity colormap.
-
-Accumulates to grayscale, then applies colormap.
-"""
-function render_circle_intensity(smld, target::Image2DTarget,
-                                 strategy::CircleRender,
-                                 mapping::IntensityColorMapping)
-    # Accumulate to grayscale
-    intensity = zeros(Float64, target.height, target.width)
-
-    for emitter in smld.emitters
-        radius_nm = get_emitter_radius(emitter, strategy)
-
-        if radius_nm < 0.1 || radius_nm > 10000.0
-            continue
-        end
-
-        # Draw circle in grayscale
-        draw_circle_outline_grayscale!(intensity, emitter, target, radius_nm,
-                                      strategy.line_width)
-    end
-
-    # Apply intensity colormap
-    return apply_intensity_colormap(intensity, mapping)
-end
 
 """
     get_emitter_radius(emitter, strategy::CircleRender)

@@ -15,9 +15,14 @@ and σ_xy (covariance) for rotation when available.
 - `smld`: SMLD dataset with .emitters field
 - `target`: Image2DTarget specifying output dimensions
 - `strategy`: EllipseRender strategy parameters
-- `color_mapping`: ColorMapping specification
+- `color_mapping`: ColorMapping specification (ManualColorMapping or FieldColorMapping)
 
 Returns Matrix{RGB{Float64}}
+
+# Note
+IntensityColorMapping is not supported for ellipse rendering. Use `color=` for
+a single color, or `color_by=:field` with `colormap=` to color each ellipse
+by a field value.
 """
 function render_ellipse(smld, target::Image2DTarget, strategy::EllipseRender,
                        color_mapping::ColorMapping)
@@ -26,7 +31,7 @@ function render_ellipse(smld, target::Image2DTarget, strategy::EllipseRender,
     elseif color_mapping isa ManualColorMapping
         return render_ellipse_manual(smld, target, strategy, color_mapping)
     elseif color_mapping isa IntensityColorMapping
-        return render_ellipse_intensity(smld, target, strategy, color_mapping)
+        error("IntensityColorMapping not supported for EllipseRender. Use `color=` for single color, or `color_by=:field` with `colormap=` to color by field value.")
     else
         error("Unsupported color mapping type for ellipse render")
     end
@@ -90,35 +95,6 @@ function render_ellipse_manual(smld, target::Image2DTarget,
     return result
 end
 
-"""
-    render_ellipse_intensity(smld, target, strategy, mapping::IntensityColorMapping)
-
-Ellipse render with intensity colormap.
-
-Accumulates to grayscale, then applies colormap.
-"""
-function render_ellipse_intensity(smld, target::Image2DTarget,
-                                  strategy::EllipseRender,
-                                  mapping::IntensityColorMapping)
-    # Accumulate to grayscale
-    intensity = zeros(Float64, target.height, target.width)
-
-    for emitter in smld.emitters
-        radius_x_nm, radius_y_nm, θ = get_ellipse_params(emitter, strategy)
-
-        if radius_x_nm < 0.1 || radius_x_nm > 10000.0 ||
-           radius_y_nm < 0.1 || radius_y_nm > 10000.0
-            continue
-        end
-
-        draw_ellipse_outline_grayscale!(intensity, emitter, target,
-                                       radius_x_nm, radius_y_nm, θ,
-                                       strategy.line_width)
-    end
-
-    # Apply intensity colormap
-    return apply_intensity_colormap(intensity, mapping)
-end
 
 """
     get_ellipse_params(emitter, strategy::EllipseRender)
