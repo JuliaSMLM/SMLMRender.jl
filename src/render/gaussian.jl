@@ -84,8 +84,8 @@ function render_gaussian_field(smld, target::Image2DTarget,
     g_num = zeros(Float64, target.height, target.width)      # Green numerator
     b_num = zeros(Float64, target.height, target.width)      # Blue numerator
 
-    # Determine value range
-    value_range = prepare_field_range(smld, mapping)
+    # Determine value range and frame_offsets (for :absolute_frame support)
+    value_range, frame_offsets = prepare_field_range(smld, mapping)
 
     for emitter in smld.emitters
         # Get covariance values
@@ -96,7 +96,8 @@ function render_gaussian_field(smld, target::Image2DTarget,
         end
 
         # Get color for this emitter
-        color = get_emitter_color(emitter, mapping; value_range=value_range)
+        color = get_emitter_color(emitter, mapping; value_range=value_range,
+                                  frame_offsets=frame_offsets)
 
         # Render blob, accumulating both intensity and color
         render_gaussian_blob_weighted!(intensity, r_num, g_num, b_num,

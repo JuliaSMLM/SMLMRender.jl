@@ -63,6 +63,9 @@ For pixels with multiple localizations, averages field values.
 """
 function render_histogram_field(smld, target::Image2DTarget,
                                 mapping::FieldColorMapping)
+    # Determine value range and frame_offsets (for :absolute_frame support)
+    value_range, frame_offsets = prepare_field_range(smld, mapping)
+
     # Accumulate intensity and field values
     intensity = zeros(Float64, target.height, target.width)
     field_sum = zeros(Float64, target.height, target.width)
@@ -71,7 +74,8 @@ function render_histogram_field(smld, target::Image2DTarget,
         i, j = physical_to_pixel_index(emitter.x, emitter.y, target)
         if in_bounds(i, j, target)
             intensity[i, j] += 1.0
-            field_sum[i, j] += getfield(emitter, mapping.field)
+            field_sum[i, j] += get_field_value(emitter, mapping.field;
+                                               frame_offsets=frame_offsets)
         end
     end
 
@@ -84,9 +88,6 @@ function render_histogram_field(smld, target::Image2DTarget,
             field_avg[idx] = 0.0
         end
     end
-
-    # Determine value range for color mapping
-    value_range = prepare_field_range(smld, mapping)
 
     # Map field values to colors
     result = zeros(RGB{Float64}, target.height, target.width)

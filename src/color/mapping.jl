@@ -52,7 +52,8 @@ function apply_intensity_colormap(intensity::Matrix{Float64}, mapping::Intensity
 end
 
 """
-    get_field_color(emitter, mapping::FieldColorMapping, value_range::Tuple{Float64, Float64})
+    get_field_color(emitter, mapping::FieldColorMapping, value_range::Tuple{Float64, Float64};
+                   frame_offsets=nothing)
 
 Get RGB color for a single emitter based on its field value.
 
@@ -60,13 +61,15 @@ Get RGB color for a single emitter based on its field value.
 - `emitter`: Emitter object (must have the specified field)
 - `mapping`: FieldColorMapping specification
 - `value_range`: (min_val, max_val) for normalization
+- `frame_offsets`: Required when `mapping.field === :absolute_frame`
 
 Returns RGB{Float64}
 """
 function get_field_color(emitter, mapping::FieldColorMapping,
-                        value_range::Tuple{Float64, Float64})
-    # Get field value
-    value = getfield(emitter, mapping.field)
+                        value_range::Tuple{Float64, Float64};
+                        frame_offsets=nothing)
+    # Get field value (handles computed fields like :absolute_frame)
+    value = get_field_value(emitter, mapping.field; frame_offsets=frame_offsets)
 
     # Normalize to [0, 1]
     min_val, max_val = value_range
@@ -97,8 +100,10 @@ function get_emitter_color(emitter, mapping::ManualColorMapping; value_range=not
     return mapping.color
 end
 
-function get_emitter_color(emitter, mapping::FieldColorMapping; value_range::Tuple{Float64, Float64})
-    return get_field_color(emitter, mapping, value_range)
+function get_emitter_color(emitter, mapping::FieldColorMapping;
+                          value_range::Tuple{Float64, Float64},
+                          frame_offsets=nothing)
+    return get_field_color(emitter, mapping, value_range; frame_offsets=frame_offsets)
 end
 
 function get_emitter_color(emitter, mapping::IntensityColorMapping; value_range=nothing)
@@ -116,13 +121,22 @@ end
 
 Calculate the value range for field-based color mapping.
 
-Handles :auto range and percentile clipping.
+Handles `:auto` range and percentile clipping. Also computes `frame_offsets`
+when `mapping.field === :absolute_frame`.
+
+Returns `(value_range, frame_offsets)` where `frame_offsets` is `nothing`
+for regular fields or a `Dict{Int,Int}` for `:absolute_frame`.
 """
 function prepare_field_range(smld, mapping::FieldColorMapping)
+    # Compute frame_offsets if needed
+    frame_offsets = mapping.field === :absolute_frame ? compute_frame_offsets(smld) : nothing
+
     if mapping.range isa Tuple
-        return mapping.range
+        return (mapping.range, frame_offsets)
     else  # :auto
-        return calculate_field_range(smld, mapping.field, mapping.clip_percentiles)
+        range = calculate_field_range(smld, mapping.field, mapping.clip_percentiles;
+                                     frame_offsets=frame_offsets)
+        return (range, frame_offsets)
     end
 end
 

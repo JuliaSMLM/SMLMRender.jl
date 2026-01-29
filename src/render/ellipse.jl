@@ -47,8 +47,8 @@ function render_ellipse_field(smld, target::Image2DTarget,
                               mapping::FieldColorMapping)
     result = zeros(RGB{Float64}, target.height, target.width)
 
-    # Determine value range
-    value_range = prepare_field_range(smld, mapping)
+    # Determine value range and frame_offsets (for :absolute_frame support)
+    value_range, frame_offsets = prepare_field_range(smld, mapping)
 
     for emitter in smld.emitters
         # Get ellipse parameters (radii and rotation)
@@ -60,7 +60,8 @@ function render_ellipse_field(smld, target::Image2DTarget,
         end
 
         # Get color
-        color = get_emitter_color(emitter, mapping; value_range=value_range)
+        color = get_emitter_color(emitter, mapping; value_range=value_range,
+                                  frame_offsets=frame_offsets)
 
         # Draw ellipse
         draw_ellipse_outline!(result, emitter, target, radius_x_nm, radius_y_nm, θ,

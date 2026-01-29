@@ -26,7 +26,7 @@ Main rendering interface using keyword arguments for convenient usage.
 **Color Mapping (mutually exclusive):**
 - `colormap`: Symbol for intensity-based coloring (e.g., :inferno, :hot, :viridis)
 - `color_by`: Field symbol for field-based coloring (:z, :photons, :frame, :σ_x, etc.)
-- `color`: Manual RGB color
+- `color`: Manual color as Symbol (:red, :cyan) or RGB
 
 **Options:**
 - `clip_percentile`: Percentile for intensity clipping (default: 0.99)
@@ -43,8 +43,9 @@ img = render(smld, colormap=:inferno, zoom=20, roi=(430:860, :))
 # Render data bounds with 10nm pixels (variable output size)
 img = render(smld, color_by=:z, colormap=:viridis, pixel_size=10.0)
 
-# Manual red color with specific zoom
-img = render(smld, color=colorant"red", zoom=15)
+# Manual red color with specific zoom (Symbol or RGB)
+img = render(smld, color=:red, zoom=15)
+img = render(smld, color=colorant"cyan", zoom=15)
 
 # Circle rendering with field coloring
 img = render(smld, strategy=CircleRender(), color_by=:photons, colormap=:plasma, zoom=20)
@@ -63,7 +64,7 @@ function render(smld;
                 # Color mapping (mutually exclusive)
                 colormap::Union{Symbol, Nothing} = nothing,
                 color_by::Union{Symbol, Nothing} = nothing,
-                color::Union{RGB, Nothing} = nothing,
+                color::Union{RGB, Symbol, Nothing} = nothing,
 
                 # Color mapping options
                 clip_percentile::Real = 0.99,
@@ -110,7 +111,7 @@ function render(smld, x_edges::AbstractVector, y_edges::AbstractVector;
                 strategy::RenderingStrategy = GaussianRender(),
                 colormap::Union{Symbol, Nothing} = nothing,
                 color_by::Union{Symbol, Nothing} = nothing,
-                color::Union{RGB, Nothing} = nothing,
+                color::Union{RGB, Symbol, Nothing} = nothing,
                 clip_percentile::Real = 0.99,
                 field_range::Union{Tuple{Real, Real}, Symbol} = :auto,
                 field_clip_percentiles::Union{Tuple{Real, Real}, Nothing} = (0.01, 0.99),
@@ -299,8 +300,9 @@ function _determine_color_mapping(colormap, color_by, color,
         # Intensity-based coloring
         return IntensityColorMapping(colormap, clip_percentile)
     elseif color !== nothing
-        # Manual color
-        return ManualColorMapping(RGB{Float64}(color))
+        # Manual color - parse Symbol to RGB if needed
+        rgb = color isa Symbol ? parse(Colorant, string(color)) : color
+        return ManualColorMapping(RGB{Float64}(rgb))
     else
         # Default: intensity with inferno
         return IntensityColorMapping(:inferno, clip_percentile)
@@ -318,7 +320,8 @@ function _render_dispatch(smld, target::Image2DTarget, options::RenderOptions)
     # Extract field value range if using field-based coloring (for colorbar metadata)
     field_value_range = nothing
     if options.color_mapping isa FieldColorMapping
-        field_value_range = prepare_field_range(smld, options.color_mapping)
+        # prepare_field_range returns (range, frame_offsets) - we only need range for metadata
+        field_value_range, _ = prepare_field_range(smld, options.color_mapping)
     end
 
     # Dispatch on strategy type

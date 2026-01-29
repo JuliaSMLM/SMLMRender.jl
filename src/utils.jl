@@ -5,6 +5,75 @@ using ColorSchemes
 import FileIO  # For save_image function
 import CairoMakie  # For export_colorbar function
 
+# ============================================================================
+# Frame offset computation for absolute_frame support
+# ============================================================================
+
+"""
+    compute_frame_offsets(smld)
+
+Compute cumulative frame offsets per dataset for absolute frame calculation.
+
+When rendering multiple datasets where each dataset's `frame` starts at 1,
+this computes offsets so `absolute_frame = frame + offset[dataset]` gives
+a continuous frame number across all datasets.
+
+Returns `Dict{Int, Int}` mapping `dataset_id => frame_offset`.
+
+# Example
+```julia
+# Dataset 1: frames 1-100, Dataset 2: frames 1-50
+offsets = compute_frame_offsets(smld)  # {1 => 0, 2 => 100}
+# Emitter in dataset 2, frame 25 → absolute_frame = 25 + 100 = 125
+```
+"""
+function compute_frame_offsets(smld)
+    # Find max frame per dataset
+    max_frames = Dict{Int, Int}()
+    for e in smld.emitters
+        ds = e.dataset
+        max_frames[ds] = max(get(max_frames, ds, 0), e.frame)
+    end
+
+    # Compute cumulative offsets (sorted by dataset id)
+    datasets = sort(collect(keys(max_frames)))
+    offsets = Dict{Int, Int}()
+    cumulative = 0
+    for ds in datasets
+        offsets[ds] = cumulative
+        cumulative += max_frames[ds]
+    end
+    return offsets
+end
+
+"""
+    get_field_value(emitter, field::Symbol; frame_offsets=nothing)
+
+Get field value from emitter, handling computed fields like `:absolute_frame`.
+
+# Arguments
+- `emitter`: Emitter object
+- `field`: Field name (`:z`, `:photons`, `:frame`, `:absolute_frame`, etc.)
+- `frame_offsets`: Required when `field === :absolute_frame`, from `compute_frame_offsets()`
+
+# Example
+```julia
+offsets = compute_frame_offsets(smld)
+abs_frame = get_field_value(emitter, :absolute_frame; frame_offsets=offsets)
+photons = get_field_value(emitter, :photons)
+```
+"""
+function get_field_value(emitter, field::Symbol; frame_offsets=nothing)
+    if field === :absolute_frame
+        if frame_offsets === nothing
+            error(":absolute_frame requires frame_offsets to be precomputed via compute_frame_offsets()")
+        end
+        return emitter.frame + frame_offsets[emitter.dataset]
+    else
+        return getfield(emitter, field)
+    end
+end
+
 """
     physical_to_pixel(x_phys, y_phys, target::Image2DTarget)
 
@@ -150,19 +219,25 @@ function get_camera_pixel_size(camera)
 end
 
 """
-    calculate_field_range(smld, field::Symbol, clip_percentiles)
+    calculate_field_range(smld, field::Symbol, clip_percentiles; frame_offsets=nothing)
 
 Calculate range of field values, optionally with percentile clipping.
 
 # Arguments
 - `smld`: SMLD dataset
-- `field`: Field name (:z, :photons, etc.)
-- `clip_percentiles`: Tuple (low, high) for percentile clipping, or nothing
+- `field`: Field name (`:z`, `:photons`, `:absolute_frame`, etc.)
+- `clip_percentiles`: Tuple `(low, high)` for percentile clipping, or `nothing`
+- `frame_offsets`: Required when `field === :absolute_frame`
 
-Returns (min_val, max_val)
+Returns `(min_val, max_val)`
 """
-function calculate_field_range(smld, field::Symbol, clip_percentiles)
-    values = [getfield(e, field) for e in smld.emitters]
+function calculate_field_range(smld, field::Symbol, clip_percentiles; frame_offsets=nothing)
+    # Precompute frame offsets if needed and not provided
+    if field === :absolute_frame && frame_offsets === nothing
+        frame_offsets = compute_frame_offsets(smld)
+    end
+
+    values = [get_field_value(e, field; frame_offsets=frame_offsets) for e in smld.emitters]
 
     if clip_percentiles === nothing
         return extrema(values)
