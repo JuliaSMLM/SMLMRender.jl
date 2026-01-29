@@ -99,8 +99,8 @@ hist_result = render(smld, strategy=HistogramRender(), zoom=10)
 # Gaussian: Smooth blobs
 gauss_result = render(smld, strategy=GaussianRender(), zoom=10)
 
-# Circle: Visualize localization precision
-circle_result = render(smld, strategy=CircleRender(), zoom=20)
+# Circle: Visualize localization precision (requires color_by or color)
+circle_result = render(smld, strategy=CircleRender(), color_by=:frame, zoom=20)
 
 println("Histogram: $(size(hist_result.image))")
 println("Gaussian: $(size(gauss_result.image))")

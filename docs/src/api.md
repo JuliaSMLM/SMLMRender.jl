@@ -18,6 +18,7 @@ Render2DStrategy
 HistogramRender
 GaussianRender
 CircleRender
+EllipseRender
 ```
 
 ## Color Mapping
@@ -58,4 +59,5 @@ create_target_from_smld
 save_image
 export_colorbar
 list_recommended_colormaps
+api
 ```
