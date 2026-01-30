@@ -284,6 +284,47 @@ No colormap applied. Returns grayscale image.
 """
 struct GrayscaleMapping <: ColorMapping end
 
+"""
+    CategoricalColorMapping <: ColorMapping
+
+Color localizations by integer field using categorical palette. Colors cycle
+when values exceed palette size. Ideal for cluster IDs, molecule IDs, etc.
+
+# Fields
+- `field::Symbol`: Integer field name (:id, :cluster_id, :molecule, etc.)
+- `palette::Symbol`: ColorSchemes.jl categorical palette (:tab10, :Set1, :Dark2, etc.)
+
+# Recommended Palettes
+- `:tab10` - 10 distinct colors (most popular, Matplotlib default)
+- `:Set1_9` - 9 high-saturation colors (ColorBrewer)
+- `:Set2_8` - 8 pastel colors
+- `:Set3_12` - 12 colors
+- `:tab20` - 20 colors (10 pairs)
+- `:tab20b` - 20 colors (alternative)
+- `:tab20c` - 20 colors (alternative)
+
+# Examples
+```julia
+# Color by cluster ID
+render(smld, color_by=:id, categorical=true, zoom=20)
+
+# Custom palette
+render(smld, color_by=:id, colormap=:Set1_9, categorical=true, zoom=20)
+
+# Direct mapping
+color_mapping = CategoricalColorMapping(:id, :tab10)
+render(smld; color_mapping=color_mapping, zoom=20)
+```
+"""
+struct CategoricalColorMapping <: ColorMapping
+    field::Symbol
+    palette::Symbol
+
+    function CategoricalColorMapping(field::Symbol, palette::Symbol=:tab10)
+        new(field, palette)
+    end
+end
+
 # ============================================================================
 # Render Targets (What we're rendering to)
 # ============================================================================

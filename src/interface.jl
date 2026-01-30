@@ -27,6 +27,7 @@ Main rendering interface using keyword arguments for convenient usage.
 - `colormap`: Symbol for intensity-based coloring (e.g., :inferno, :hot, :viridis)
 - `color_by`: Field symbol for field-based coloring (:z, :photons, :frame, :σ_x, etc.)
 - `color`: Manual color as Symbol (:red, :cyan) or RGB
+- `categorical`: Use categorical palette for integer fields like :id (default: false)
 
 **Options:**
 - `clip_percentile`: Percentile for intensity clipping (default: 0.99)
@@ -49,6 +50,10 @@ img = render(smld, color=colorant"cyan", zoom=15)
 
 # Circle rendering with field coloring
 img = render(smld, strategy=CircleRender(), color_by=:photons, colormap=:plasma, zoom=20)
+
+# Categorical coloring for cluster IDs
+img = render(smld, color_by=:id, categorical=true, zoom=20)
+img = render(smld, color_by=:id, colormap=:Set1_9, categorical=true, zoom=20)
 ```
 """
 function render(smld;
@@ -65,6 +70,7 @@ function render(smld;
                 colormap::Union{Symbol, Nothing} = nothing,
                 color_by::Union{Symbol, Nothing} = nothing,
                 color::Union{RGB, Symbol, Nothing} = nothing,
+                categorical::Bool = false,
 
                 # Color mapping options
                 clip_percentile::Real = 0.99,
@@ -84,7 +90,7 @@ function render(smld;
     end
 
     # Determine color mapping
-    color_mapping = _determine_color_mapping(colormap, color_by, color,
+    color_mapping = _determine_color_mapping(colormap, color_by, color, categorical,
                                             clip_percentile, field_range,
                                             field_clip_percentiles)
 
@@ -281,7 +287,7 @@ end
 
 Determine color mapping from keyword arguments.
 """
-function _determine_color_mapping(colormap, color_by, color,
+function _determine_color_mapping(colormap, color_by, color, categorical,
                                   clip_percentile, field_range,
                                   field_clip_percentiles)
     # Check for invalid combinations
@@ -291,11 +297,18 @@ function _determine_color_mapping(colormap, color_by, color,
 
     # Determine which mapping to use
     if color_by !== nothing
-        # Field-based coloring
-        # Use specified colormap or default to turbo (high contrast, napari standard)
-        field_colormap = colormap !== nothing ? colormap : :turbo
-        return FieldColorMapping(color_by, field_colormap, field_range,
-                                field_clip_percentiles)
+        if categorical
+            # Categorical coloring (e.g., cluster IDs)
+            # Use specified colormap or default to tab10
+            palette = colormap !== nothing ? colormap : :tab10
+            return CategoricalColorMapping(color_by, palette)
+        else
+            # Field-based coloring
+            # Use specified colormap or default to turbo (high contrast, napari standard)
+            field_colormap = colormap !== nothing ? colormap : :turbo
+            return FieldColorMapping(color_by, field_colormap, field_range,
+                                    field_clip_percentiles)
+        end
     elseif colormap !== nothing
         # Intensity-based coloring
         return IntensityColorMapping(colormap, clip_percentile)

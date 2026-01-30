@@ -112,8 +112,29 @@ function get_emitter_color(emitter, mapping::IntensityColorMapping; value_range=
     return RGB{Float64}(1.0, 1.0, 1.0)
 end
 
-function get_emitter_color(emitter, mapping::GrayscaleMapping; value_range=nothing)
+function get_emitter_color(emitter, mapping::GrayscaleMapping; value_range=nothing, kwargs...)
     return RGB{Float64}(1.0, 1.0, 1.0)
+end
+
+"""
+    get_emitter_color(emitter, mapping::CategoricalColorMapping; kwargs...)
+
+Get categorical color for emitter based on integer field value.
+Uses modular indexing into palette - colors cycle for values > palette size.
+"""
+function get_emitter_color(emitter, mapping::CategoricalColorMapping; kwargs...)
+    # Get integer field value
+    value = getfield(emitter, mapping.field)
+    int_value = round(Int, value)
+
+    # Get palette
+    palette = get_colormap(mapping.palette)
+    n_colors = length(palette)
+
+    # Modular index (1-based)
+    idx = mod1(int_value, n_colors)
+
+    return RGB{Float64}(palette[idx])
 end
 
 """
@@ -210,7 +231,8 @@ function list_recommended_colormaps()
         :sequential => [:viridis, :cividis, :inferno, :magma, :plasma, :turbo, :hot],
         :diverging => [:RdBu, :seismic, :coolwarm],
         :cyclic => [:twilight, :phase],
-        :perceptual => [:viridis, :cividis, :inferno, :magma, :plasma]
+        :perceptual => [:viridis, :cividis, :inferno, :magma, :plasma],
+        :categorical => [:tab10, :Set1_9, :Set2_8, :Set3_12, :tab20, :tab20b, :tab20c]
     )
 end
 

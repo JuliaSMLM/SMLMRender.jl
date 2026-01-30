@@ -47,7 +47,7 @@ include("api.jl")
 export RenderingStrategy, Render2DStrategy
 export HistogramRender, GaussianRender, CircleRender, EllipseRender
 export ColorMapping
-export IntensityColorMapping, FieldColorMapping, ManualColorMapping, GrayscaleMapping
+export IntensityColorMapping, FieldColorMapping, ManualColorMapping, GrayscaleMapping, CategoricalColorMapping
 export RenderTarget, Image2DTarget
 export ContrastMethod, ContrastOptions
 export RenderOptions, RenderResult2D

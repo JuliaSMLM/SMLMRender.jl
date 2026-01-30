@@ -30,6 +30,8 @@ function render_circle(smld, target::Image2DTarget, strategy::CircleRender,
         return render_circle_field(smld, target, strategy, color_mapping)
     elseif color_mapping isa ManualColorMapping
         return render_circle_manual(smld, target, strategy, color_mapping)
+    elseif color_mapping isa CategoricalColorMapping
+        return render_circle_categorical(smld, target, strategy, color_mapping)
     elseif color_mapping isa IntensityColorMapping
         error("IntensityColorMapping not supported for CircleRender. Use `color=` for single color, or `color_by=:field` with `colormap=` to color by field value.")
     else
@@ -90,6 +92,33 @@ function render_circle_manual(smld, target::Image2DTarget,
 
         draw_circle_outline!(result, emitter, target, radius_nm,
                            mapping.color, strategy.line_width)
+    end
+
+    return result
+end
+
+"""
+    render_circle_categorical(smld, target, strategy, mapping::CategoricalColorMapping)
+
+Circle render with categorical coloring for cluster/ID visualization.
+"""
+function render_circle_categorical(smld, target::Image2DTarget,
+                                   strategy::CircleRender,
+                                   mapping::CategoricalColorMapping)
+    result = zeros(RGB{Float64}, target.height, target.width)
+
+    for emitter in smld.emitters
+        radius_nm = get_emitter_radius(emitter, strategy)
+
+        if radius_nm < 0.1 || radius_nm > 10000.0
+            continue
+        end
+
+        # Get categorical color
+        color = get_emitter_color(emitter, mapping)
+
+        draw_circle_outline!(result, emitter, target, radius_nm,
+                           color, strategy.line_width)
     end
 
     return result

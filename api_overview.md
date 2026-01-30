@@ -4,13 +4,13 @@ High-performance rendering for Single Molecule Localization Microscopy (SMLM) da
 
 ## Exports Summary
 
-Total exports: 22 (1 function, 16 types, 5 utilities)
+Total exports: 23 (1 function, 17 types, 5 utilities)
 
 **Main Function:** `render()`
 
-**Rendering Strategies:** `RenderingStrategy`, `Render2DStrategy`, `HistogramRender`, `GaussianRender`, `CircleRender`
+**Rendering Strategies:** `RenderingStrategy`, `Render2DStrategy`, `HistogramRender`, `GaussianRender`, `CircleRender`, `EllipseRender`
 
-**Color Mapping:** `ColorMapping`, `IntensityColorMapping`, `FieldColorMapping`, `ManualColorMapping`, `GrayscaleMapping`
+**Color Mapping:** `ColorMapping`, `IntensityColorMapping`, `FieldColorMapping`, `ManualColorMapping`, `GrayscaleMapping`, `CategoricalColorMapping`
 
 **Render Configuration:** `RenderTarget`, `Image2DTarget`, `ContrastMethod`, `ContrastOptions`, `RenderOptions`, `RenderResult2D`
 
@@ -133,6 +133,13 @@ end
 
 # No colormap
 struct GrayscaleMapping <: ColorMapping end
+
+# Categorical coloring (for cluster IDs, molecule IDs)
+struct CategoricalColorMapping <: ColorMapping
+    field::Symbol    # Integer field (:id, :cluster_id, :molecule, etc.)
+    palette::Symbol  # Categorical palette (:tab10, :Set1, :Dark2, etc.)
+end
+# Colors cycle when values exceed palette size via mod1(value, length(palette))
 ```
 
 ### Render Configuration
@@ -197,6 +204,7 @@ Main rendering function using keyword arguments for convenient usage.
 - `colormap::Symbol` - Intensity-based coloring (`:inferno`, `:hot`, `:viridis`, etc.)
 - `color_by::Symbol` - Field-based coloring (`:z`, `:photons`, `:frame`, `:σ_x`, etc.)
 - `color::RGB` - Manual color (e.g., `colorant"red"`)
+- `categorical::Bool` - Use categorical palette for integer fields like `:id` (default: `false`)
 
 **Options:**
 - `clip_percentile::Real` - Percentile for intensity clipping (default: 0.99)
@@ -312,6 +320,28 @@ result = render(smld, color_by=:photons, colormap=:viridis, zoom=20)
 
 # Export colorbar for the field
 export_colorbar(result, "colorbar.png")
+```
+
+### Categorical Coloring (Clusters/IDs)
+
+```julia
+# Color by cluster ID - each cluster gets distinct color from palette
+result = render(smld, color_by=:id, categorical=true, zoom=20)
+
+# Custom palette (tab10 is default)
+result = render(smld, color_by=:id, colormap=:Set1_9, categorical=true, zoom=20)
+
+# Available categorical palettes (high-contrast, distinct colors):
+# :tab10   - 10 colors (most popular, Matplotlib default)
+# :Set1_9  - 9 high-saturation colors (ColorBrewer)
+# :Set2_8  - 8 pastel colors
+# :Set3_12 - 12 colors
+# :tab20   - 20 colors (10 pairs)
+# :tab20b  - 20 colors (alternative)
+# :tab20c  - 20 colors (alternative)
+
+# Colors cycle when cluster IDs exceed palette size
+# e.g., with :tab10, cluster 11 gets same color as cluster 1
 ```
 
 ### Multi-Channel Overlay

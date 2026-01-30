@@ -29,6 +29,8 @@ function render_gaussian(smld, target::Image2DTarget, strategy::GaussianRender,
         return render_gaussian_manual(smld, target, strategy, color_mapping)
     elseif color_mapping isa GrayscaleMapping
         return render_gaussian_grayscale(smld, target, strategy)
+    elseif color_mapping isa CategoricalColorMapping
+        return render_gaussian_categorical(smld, target, strategy, color_mapping)
     else
         error("Unsupported color mapping type for Gaussian render")
     end
@@ -165,6 +167,44 @@ function render_gaussian_grayscale(smld, target::Image2DTarget,
     end
 
     return result
+end
+
+"""
+    render_gaussian_categorical(smld, target, strategy, mapping::CategoricalColorMapping)
+
+Gaussian render with categorical coloring for cluster/ID visualization.
+
+Each blob is colored by its integer field value using modular palette indexing.
+"""
+function render_gaussian_categorical(smld, target::Image2DTarget,
+                                     strategy::GaussianRender,
+                                     mapping::CategoricalColorMapping)
+    # Use intensity-weighted color algorithm (same as field coloring)
+    intensity = zeros(Float64, target.height, target.width)
+    r_num = zeros(Float64, target.height, target.width)
+    g_num = zeros(Float64, target.height, target.width)
+    b_num = zeros(Float64, target.height, target.width)
+
+    for emitter in smld.emitters
+        # Get covariance values
+        sigma_x, sigma_y, sigma_xy = get_emitter_covariance(emitter, strategy)
+
+        if sigma_x < 1e-3 || sigma_y < 1e-3 || sigma_x > 1000.0 || sigma_y > 1000.0
+            continue
+        end
+
+        # Get categorical color for this emitter
+        color = get_emitter_color(emitter, mapping)
+
+        # Render blob, accumulating both intensity and color
+        render_gaussian_blob_weighted!(intensity, r_num, g_num, b_num,
+                                       emitter, target, sigma_x, sigma_y,
+                                       strategy.n_sigmas, strategy.normalization,
+                                       color; sigma_xy=sigma_xy)
+    end
+
+    # Compute intensity-weighted color with gamma correction
+    return apply_intensity_weighted_color(intensity, r_num, g_num, b_num)
 end
 
 """

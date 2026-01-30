@@ -29,6 +29,7 @@ IntensityColorMapping
 FieldColorMapping
 ManualColorMapping
 GrayscaleMapping
+CategoricalColorMapping
 ```
 
 ## Render Targets
