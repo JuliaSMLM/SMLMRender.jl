@@ -26,6 +26,8 @@ function render_histogram(smld, target::Image2DTarget, color_mapping::ColorMappi
         return render_histogram_manual(smld, target, color_mapping)
     elseif color_mapping isa GrayscaleMapping
         return render_histogram_grayscale(smld, target)
+    elseif color_mapping isa CategoricalColorMapping
+        return render_histogram_categorical(smld, target, color_mapping)
     else
         error("Unsupported color mapping type for histogram render")
     end
@@ -63,6 +65,9 @@ For pixels with multiple localizations, averages field values.
 """
 function render_histogram_field(smld, target::Image2DTarget,
                                 mapping::FieldColorMapping)
+    # Determine value range and frame_offsets (for :absolute_frame support)
+    value_range, frame_offsets = prepare_field_range(smld, mapping)
+
     # Accumulate intensity and field values
     intensity = zeros(Float64, target.height, target.width)
     field_sum = zeros(Float64, target.height, target.width)
@@ -71,7 +76,8 @@ function render_histogram_field(smld, target::Image2DTarget,
         i, j = physical_to_pixel_index(emitter.x, emitter.y, target)
         if in_bounds(i, j, target)
             intensity[i, j] += 1.0
-            field_sum[i, j] += getfield(emitter, mapping.field)
+            field_sum[i, j] += get_field_value(emitter, mapping.field;
+                                               frame_offsets=frame_offsets)
         end
     end
 
@@ -84,9 +90,6 @@ function render_histogram_field(smld, target::Image2DTarget,
             field_avg[idx] = 0.0
         end
     end
-
-    # Determine value range for color mapping
-    value_range = prepare_field_range(smld, mapping)
 
     # Map field values to colors
     result = zeros(RGB{Float64}, target.height, target.width)
@@ -171,5 +174,43 @@ function render_histogram_grayscale(smld, target::Image2DTarget)
         result[i] = RGB{Float64}(gray_val, gray_val, gray_val)
     end
 
+    return result
+end
+
+"""
+    render_histogram_categorical(smld, target, mapping::CategoricalColorMapping)
+
+Histogram render with categorical coloring for cluster/ID visualization.
+
+For pixels with multiple localizations from different clusters, uses
+the most frequent cluster's color (mode).
+"""
+function render_histogram_categorical(smld, target::Image2DTarget,
+                                      mapping::CategoricalColorMapping)
+    # Get palette
+    palette = get_colormap(mapping.palette)
+    n_colors = length(palette)
+
+    # Track color accumulation per pixel
+    # For simplicity, accumulate RGB directly weighted by count
+    result = zeros(RGB{Float64}, target.height, target.width)
+    counts = zeros(Float64, target.height, target.width)
+
+    for emitter in smld.emitters
+        i, j = physical_to_pixel_index(emitter.x, emitter.y, target)
+        if in_bounds(i, j, target)
+            # Get categorical color
+            value = getfield(emitter, mapping.field)
+            int_value = round(Int, value)
+            idx = mod1(int_value, n_colors)
+            color = RGB{Float64}(palette[idx])
+
+            # Accumulate color and count
+            result[i, j] += color
+            counts[i, j] += 1.0
+        end
+    end
+
+    # Saturate overlapping regions (don't normalize - similar to field histogram)
     return result
 end

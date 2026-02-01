@@ -107,6 +107,11 @@ Two modes for controlling output resolution:
 - Size depends on data distribution
 - Specify in nm
 
+**roi**: Region of interest (zoom mode only)
+- Render a subset of the camera FOV
+- Specify camera pixel ranges: `roi=(x_range, y_range)`
+- Use `:` for full range on an axis
+
 ```@example examples
 # zoom: Exact camera FOV (16×16 camera → 320×320 output)
 (img_zoom, info_zoom) = render(smld, zoom=20, colormap=:inferno)
@@ -117,6 +122,10 @@ println("  Pixel size: $(info_zoom.pixel_size_nm) nm")
 (img_px, info_px) = render(smld, pixel_size=5.0, colormap=:inferno)
 println("Pixel size (data bounds): $(info_px.output_size)")
 println("  Pixel size: $(info_px.pixel_size_nm) nm")
+
+# roi: Subset of camera FOV (e.g., x pixels 5-12, full y)
+(img_roi, info_roi) = render(smld, zoom=20, roi=(5:12, :), colormap=:inferno)
+println("ROI (subset): $(info_roi.output_size)")
 ```
 
 ## Rendering Strategies

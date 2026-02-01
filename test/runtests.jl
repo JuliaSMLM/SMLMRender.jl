@@ -77,8 +77,8 @@ end
             (_, info) = render(smld, zoom=10, strategy=HistogramRender())
             @test info.strategy == :histogram
 
-            # Circle
-            (_, info) = render(smld, zoom=10, strategy=CircleRender())
+            # Circle (requires color_by or color)
+            (_, info) = render(smld, zoom=10, strategy=CircleRender(), color_by=:frame)
             @test info.strategy == :circle
         end
 

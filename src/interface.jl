@@ -18,6 +18,10 @@ and `info` is a `RenderInfo` struct containing metadata.
 - `pixel_size`: Pixel size in nm, uses data bounds + margin (variable output size)
 - `target`: Explicit Image2DTarget (advanced)
 
+**Region of Interest:**
+- `roi`: Camera pixel ranges as `(x_range, y_range)`. Use `:` for full range.
+  Example: `roi=(430:860, 1:256)` or `roi=(430:860, :)` for full y
+
 **Rendering:**
 - `strategy`: RenderingStrategy (default: GaussianRender())
 - `backend`: :cpu, :cuda, :metal, or :auto (default: :cpu)
@@ -25,10 +29,11 @@ and `info` is a `RenderInfo` struct containing metadata.
 **Color Mapping (mutually exclusive):**
 - `colormap`: Symbol for intensity-based coloring (e.g., :inferno, :hot, :viridis)
 - `color_by`: Field symbol for field-based coloring (:z, :photons, :frame, :σ_x, etc.)
-- `color`: Manual RGB color
+- `color`: Manual color as Symbol (:red, :cyan) or RGB
+- `categorical`: Use categorical palette for integer fields like :id (default: false)
 
 **Options:**
-- `clip_percentile`: Percentile for intensity clipping (default: 0.999)
+- `clip_percentile`: Percentile for intensity clipping (default: 0.99)
 - `filename`: Save directly to file if provided
 
 # Returns
@@ -49,8 +54,17 @@ img, _ = render(smld, color_by=:z, colormap=:viridis, pixel_size=10.0)
 @show info.n_emitters_rendered
 @show info.output_size
 
+# Render ROI (camera pixels 430-860 in x, full y) at 20× zoom
+(img, info) = render(smld, colormap=:inferno, zoom=20, roi=(430:860, :))
+
+# Manual red color with specific zoom (Symbol or RGB)
+(img, info) = render(smld, color=:red, zoom=15)
+
 # Circle rendering with field coloring
 (img, info) = render(smld, strategy=CircleRender(), color_by=:photons, colormap=:plasma, zoom=20)
+
+# Categorical coloring for cluster IDs
+(img, info) = render(smld, color_by=:id, categorical=true, zoom=20)
 ```
 """
 function render(smld;
@@ -60,15 +74,17 @@ function render(smld;
                 # Target specification
                 pixel_size::Union{Real, Nothing} = nothing,
                 zoom::Union{Real, Nothing} = nothing,
+                roi::Union{Tuple{UnitRange{<:Integer}, UnitRange{<:Integer}}, Tuple{UnitRange{<:Integer}, Colon}, Tuple{Colon, UnitRange{<:Integer}}, Nothing} = nothing,
                 target::Union{Image2DTarget, Nothing} = nothing,
 
                 # Color mapping (mutually exclusive)
                 colormap::Union{Symbol, Nothing} = nothing,
                 color_by::Union{Symbol, Nothing} = nothing,
-                color::Union{RGB, Nothing} = nothing,
+                color::Union{RGB, Symbol, Nothing} = nothing,
+                categorical::Bool = false,
 
                 # Color mapping options
-                clip_percentile::Real = 0.999,
+                clip_percentile::Real = 0.99,
                 field_range::Union{Tuple{Real, Real}, Symbol} = :auto,
                 field_clip_percentiles::Union{Tuple{Real, Real}, Nothing} = (0.01, 0.99),
 
@@ -81,11 +97,11 @@ function render(smld;
     # Create target if not provided
     if target === nothing
         @assert pixel_size !== nothing || zoom !== nothing "Must specify pixel_size, zoom, or target"
-        target = create_target_from_smld(smld; pixel_size=pixel_size, zoom=zoom)
+        target = create_target_from_smld(smld; pixel_size=pixel_size, zoom=zoom, roi=roi)
     end
 
     # Determine color mapping
-    color_mapping = _determine_color_mapping(colormap, color_by, color,
+    color_mapping = _determine_color_mapping(colormap, color_by, color, categorical,
                                             clip_percentile, field_range,
                                             field_clip_percentiles)
 
@@ -112,8 +128,8 @@ function render(smld, x_edges::AbstractVector, y_edges::AbstractVector;
                 strategy::RenderingStrategy = GaussianRender(),
                 colormap::Union{Symbol, Nothing} = nothing,
                 color_by::Union{Symbol, Nothing} = nothing,
-                color::Union{RGB, Nothing} = nothing,
-                clip_percentile::Real = 0.999,
+                color::Union{RGB, Symbol, Nothing} = nothing,
+                clip_percentile::Real = 0.99,
                 field_range::Union{Tuple{Real, Real}, Symbol} = :auto,
                 field_clip_percentiles::Union{Tuple{Real, Real}, Nothing} = (0.01, 0.99),
                 backend::Symbol = :cpu,
@@ -198,7 +214,8 @@ function render_overlay(smlds::Vector, colors::Vector;
     end
 
     # Normalize each independently if requested
-    if normalize_each
+    # Skip normalization for outline renders (Circle/Ellipse) - they draw at full intensity
+    if normalize_each && !(strategy isa CircleRender || strategy isa EllipseRender)
         for i in eachindex(images)
             images[i] = _normalize_rgb_image(images[i])
         end
@@ -308,7 +325,7 @@ end
 
 Determine color mapping from keyword arguments.
 """
-function _determine_color_mapping(colormap, color_by, color,
+function _determine_color_mapping(colormap, color_by, color, categorical,
                                   clip_percentile, field_range,
                                   field_clip_percentiles)
     # Check for invalid combinations
@@ -318,17 +335,25 @@ function _determine_color_mapping(colormap, color_by, color,
 
     # Determine which mapping to use
     if color_by !== nothing
-        # Field-based coloring
-        # Use specified colormap or default to turbo (high contrast, napari standard)
-        field_colormap = colormap !== nothing ? colormap : :turbo
-        return FieldColorMapping(color_by, field_colormap, field_range,
-                                field_clip_percentiles)
+        if categorical
+            # Categorical coloring (e.g., cluster IDs)
+            # Use specified colormap or default to tab10
+            palette = colormap !== nothing ? colormap : :tab10
+            return CategoricalColorMapping(color_by, palette)
+        else
+            # Field-based coloring
+            # Use specified colormap or default to turbo (high contrast, napari standard)
+            field_colormap = colormap !== nothing ? colormap : :turbo
+            return FieldColorMapping(color_by, field_colormap, field_range,
+                                    field_clip_percentiles)
+        end
     elseif colormap !== nothing
         # Intensity-based coloring
         return IntensityColorMapping(colormap, clip_percentile)
     elseif color !== nothing
-        # Manual color
-        return ManualColorMapping(RGB{Float64}(color))
+        # Manual color - parse Symbol to RGB if needed
+        rgb = color isa Symbol ? parse(Colorant, string(color)) : color
+        return ManualColorMapping(RGB{Float64}(rgb))
     else
         # Default: intensity with inferno
         return IntensityColorMapping(:inferno, clip_percentile)
@@ -347,7 +372,8 @@ function _render_dispatch(smld, target::Image2DTarget, options::RenderOptions)
     # Extract field value range if using field-based coloring (for colorbar metadata)
     field_value_range = nothing
     if options.color_mapping isa FieldColorMapping
-        field_value_range = prepare_field_range(smld, options.color_mapping)
+        # prepare_field_range returns (range, frame_offsets) - we only need range for metadata
+        field_value_range, _ = prepare_field_range(smld, options.color_mapping)
     end
 
     # Dispatch on strategy type
@@ -357,6 +383,8 @@ function _render_dispatch(smld, target::Image2DTarget, options::RenderOptions)
         img = render_gaussian(smld, target, options.strategy, options.color_mapping)
     elseif options.strategy isa CircleRender
         img = render_circle(smld, target, options.strategy, options.color_mapping)
+    elseif options.strategy isa EllipseRender
+        img = render_ellipse(smld, target, options.strategy, options.color_mapping)
     else
         error("Unsupported rendering strategy: $(typeof(options.strategy))")
     end
@@ -393,6 +421,7 @@ Convert strategy type to symbol for RenderInfo.
 _strategy_symbol(::GaussianRender) = :gaussian
 _strategy_symbol(::HistogramRender) = :histogram
 _strategy_symbol(::CircleRender) = :circle
+_strategy_symbol(::EllipseRender) = :ellipse
 _strategy_symbol(::RenderingStrategy) = :unknown
 
 """
@@ -402,6 +431,7 @@ Convert color mapping type to symbol for RenderInfo.
 """
 _color_mode_symbol(::IntensityColorMapping) = :intensity
 _color_mode_symbol(::FieldColorMapping) = :field
+_color_mode_symbol(::CategoricalColorMapping) = :categorical
 _color_mode_symbol(::ManualColorMapping) = :manual
 _color_mode_symbol(::GrayscaleMapping) = :grayscale
 _color_mode_symbol(::ColorMapping) = :unknown

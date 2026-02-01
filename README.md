@@ -60,6 +60,11 @@ Two ways to specify output resolution:
 # - Useful for cropping to specific regions
 (img, info) = render(smld, pixel_size=10.0)  # 10nm per pixel
 @show info.pixel_size_nm  # 10.0
+
+# roi: Render a subset of the camera FOV (only with zoom mode)
+# - Specify camera pixel ranges as (x_range, y_range)
+# - Use : for full range on an axis
+(img, info) = render(smld, zoom=20, roi=(430:860, :))  # x pixels 430-860, full y
 ```
 
 ### Rendering Strategies

@@ -124,6 +124,58 @@ CircleRender(; radius_factor=2.0, line_width=1.0,
              use_localization_precision=true, fixed_radius=nothing) =
     CircleRender(radius_factor, line_width, use_localization_precision, fixed_radius)
 
+"""
+    EllipseRender <: Render2DStrategy
+
+Renders each localization as an ellipse outline. Uses separate σ_x, σ_y
+for axis radii, and σ_xy (covariance) for rotation when available.
+
+# Fields
+- `radius_factor::Float64`: Multiply sigma by this (1.0=1σ, 2.0=2σ)
+- `line_width::Float64`: Outline width in pixels (default: 1.0)
+- `use_localization_precision::Bool`: Use σ_x, σ_y from data or fixed radii
+- `fixed_radius_x::Union{Float64, Nothing}`: Fixed x-radius in nm
+- `fixed_radius_y::Union{Float64, Nothing}`: Fixed y-radius in nm
+
+# Examples
+```julia
+# 2σ ellipses using localization precision
+strategy = EllipseRender(2.0, 1.0, true, nothing, nothing)
+
+# Fixed 30nm x 20nm ellipses
+strategy = EllipseRender(1.0, 1.5, false, 30.0, 20.0)
+```
+"""
+struct EllipseRender <: Render2DStrategy
+    radius_factor::Float64
+    line_width::Float64
+    use_localization_precision::Bool
+    fixed_radius_x::Union{Float64, Nothing}
+    fixed_radius_y::Union{Float64, Nothing}
+
+    function EllipseRender(radius_factor::Real, line_width::Real,
+                          use_precision::Bool,
+                          fixed_radius_x::Union{Real, Nothing},
+                          fixed_radius_y::Union{Real, Nothing})
+        @assert radius_factor > 0 "radius_factor must be positive"
+        @assert line_width > 0 "line_width must be positive"
+        if !use_precision
+            @assert fixed_radius_x !== nothing && fixed_radius_x > 0 "fixed_radius_x must be positive when not using localization precision"
+            @assert fixed_radius_y !== nothing && fixed_radius_y > 0 "fixed_radius_y must be positive when not using localization precision"
+        end
+        new(Float64(radius_factor), Float64(line_width), use_precision,
+            fixed_radius_x === nothing ? nothing : Float64(fixed_radius_x),
+            fixed_radius_y === nothing ? nothing : Float64(fixed_radius_y))
+    end
+end
+
+# Convenience constructor
+EllipseRender(; radius_factor=2.0, line_width=1.0,
+              use_localization_precision=true,
+              fixed_radius_x=nothing, fixed_radius_y=nothing) =
+    EllipseRender(radius_factor, line_width, use_localization_precision,
+                  fixed_radius_x, fixed_radius_y)
+
 # ============================================================================
 # Color Mapping
 # ============================================================================
@@ -142,11 +194,11 @@ Accumulate grayscale intensity, then apply colormap. Traditional SMLM rendering.
 
 # Fields
 - `colormap::Symbol`: ColorSchemes.jl colormap name (e.g., :inferno, :viridis)
-- `clip_percentile::Float64`: Clip intensity before mapping (0.999 = top 0.1%)
+- `clip_percentile::Float64`: Clip intensity before mapping (0.99 = top 1%)
 
 # Examples
 ```julia
-color_mapping = IntensityColorMapping(:inferno, 0.999)
+color_mapping = IntensityColorMapping(:inferno, 0.99)
 img = render(smld; color_mapping=color_mapping)
 ```
 """
@@ -160,7 +212,7 @@ struct IntensityColorMapping <: ColorMapping
     end
 end
 
-IntensityColorMapping(colormap::Symbol) = IntensityColorMapping(colormap, 0.999)
+IntensityColorMapping(colormap::Symbol) = IntensityColorMapping(colormap, 0.99)
 
 """
     FieldColorMapping <: ColorMapping
@@ -231,6 +283,47 @@ end
 No colormap applied. Returns grayscale image.
 """
 struct GrayscaleMapping <: ColorMapping end
+
+"""
+    CategoricalColorMapping <: ColorMapping
+
+Color localizations by integer field using categorical palette. Colors cycle
+when values exceed palette size. Ideal for cluster IDs, molecule IDs, etc.
+
+# Fields
+- `field::Symbol`: Integer field name (:id, :cluster_id, :molecule, etc.)
+- `palette::Symbol`: ColorSchemes.jl categorical palette (:tab10, :Set1, :Dark2, etc.)
+
+# Recommended Palettes
+- `:tab10` - 10 distinct colors (most popular, Matplotlib default)
+- `:Set1_9` - 9 high-saturation colors (ColorBrewer)
+- `:Set2_8` - 8 pastel colors
+- `:Set3_12` - 12 colors
+- `:tab20` - 20 colors (10 pairs)
+- `:tab20b` - 20 colors (alternative)
+- `:tab20c` - 20 colors (alternative)
+
+# Examples
+```julia
+# Color by cluster ID
+render(smld, color_by=:id, categorical=true, zoom=20)
+
+# Custom palette
+render(smld, color_by=:id, colormap=:Set1_9, categorical=true, zoom=20)
+
+# Direct mapping
+color_mapping = CategoricalColorMapping(:id, :tab10)
+render(smld; color_mapping=color_mapping, zoom=20)
+```
+"""
+struct CategoricalColorMapping <: ColorMapping
+    field::Symbol
+    palette::Symbol
+
+    function CategoricalColorMapping(field::Symbol, palette::Symbol=:tab10)
+        new(field, palette)
+    end
+end
 
 # ============================================================================
 # Render Targets (What we're rendering to)

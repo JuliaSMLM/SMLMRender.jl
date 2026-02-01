@@ -14,11 +14,13 @@ Render SMLM localization data to an image.
 - `strategy::RenderingStrategy = GaussianRender()` - Rendering algorithm
 - `zoom::Real` - Output pixels per camera pixel (use this OR pixel_size)
 - `pixel_size::Real` - Output pixel size in nm (use this OR zoom)
+- `roi::Tuple` - Region of interest as camera pixel ranges (zoom mode only)
 - `target::Image2DTarget` - Explicit render target (advanced)
 - `colormap::Symbol` - Colormap for intensity mode (:inferno, :hot, :viridis, etc.)
 - `color_by::Symbol` - Field for coloring (:z, :photons, :frame, :σ_x, etc.)
-- `color::RGB` - Manual fixed color
-- `clip_percentile::Real = 0.999` - Intensity clipping percentile
+- `color::Union{RGB,Symbol}` - Manual fixed color (:red, :cyan, or RGB value)
+- `categorical::Bool = false` - Use categorical palette for integer fields
+- `clip_percentile::Real = 0.99` - Intensity clipping percentile
 - `field_range::Union{Tuple,Symbol} = :auto` - Field value range or :auto
 - `field_clip_percentiles::Tuple = (0.01, 0.99)` - Field percentile clipping
 - `backend::Symbol = :cpu` - Compute backend (:cpu, :cuda, :metal, :auto)
@@ -28,6 +30,8 @@ Render SMLM localization data to an image.
 ```julia
 (img, info) = render(smld, colormap=:inferno, zoom=20)
 (img, info) = render(smld, color_by=:z, colormap=:turbo, zoom=20)
+(img, info) = render(smld, zoom=20, roi=(430:860, :))  # ROI
+(img, info) = render(smld, color_by=:id, categorical=true, zoom=20)  # Categorical
 img, _ = render(smld, zoom=20, filename="output.png")
 ```
 
@@ -60,8 +64,8 @@ Metadata from a render operation. Follows ecosystem convention.
 - `n_emitters_rendered::Int` - Number of emitters actually rendered
 - `output_size::Tuple{Int,Int}` - (height, width) of output image
 - `pixel_size_nm::Float64` - Output pixel size in nanometers
-- `strategy::Symbol` - Rendering strategy (:gaussian, :histogram, :circle)
-- `color_mode::Symbol` - Color mapping mode (:intensity, :field, :manual, :grayscale)
+- `strategy::Symbol` - Rendering strategy (:gaussian, :histogram, :circle, :ellipse)
+- `color_mode::Symbol` - Color mapping mode (:intensity, :field, :categorical, :manual, :grayscale)
 - `field_range::Union{Nothing,Tuple{Float64,Float64}}` - Value range for colorbar
 
 **Example:**
@@ -109,6 +113,20 @@ CircleRender(;
 )
 ```
 
+### EllipseRender
+
+Ellipse outline rendering with covariance support.
+
+```julia
+EllipseRender(;
+    radius_factor = 2.0,
+    line_width = 1.0,
+    use_localization_precision = true,
+    fixed_radius_x = nothing,
+    fixed_radius_y = nothing
+)
+```
+
 ## Color Mapping Types
 
 ### IntensityColorMapping
@@ -116,7 +134,7 @@ CircleRender(;
 Accumulate intensity, apply colormap.
 
 ```julia
-IntensityColorMapping(colormap::Symbol, clip_percentile::Real = 0.999)
+IntensityColorMapping(colormap::Symbol, clip_percentile::Real = 0.99)
 ```
 
 ### FieldColorMapping
@@ -126,6 +144,16 @@ Color by emitter field value.
 ```julia
 FieldColorMapping(field::Symbol, colormap::Symbol, range, clip_percentiles)
 ```
+
+### CategoricalColorMapping
+
+Color by integer field using categorical palette.
+
+```julia
+CategoricalColorMapping(field::Symbol, palette::Symbol = :tab10)
+```
+
+Recommended palettes: `:tab10`, `:Set1_9`, `:Set2_8`, `:Set3_12`, `:tab20`
 
 ### ManualColorMapping
 
@@ -158,7 +186,7 @@ Export colorbar for field-colored images.
 export_colorbar(:turbo, info.field_range, "Z-depth (nm)", "colorbar.png")
 ```
 
-### create_target_from_smld(smld; pixel_size, zoom)
+### create_target_from_smld(smld; pixel_size, zoom, roi)
 
 Create Image2DTarget from SMLD data.
 
