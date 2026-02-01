@@ -3,9 +3,12 @@
 using Colors
 
 """
-    render(smld; kwargs...)
+    render(smld; kwargs...) -> (image, info)
 
 Main rendering interface using keyword arguments for convenient usage.
+
+Returns a tuple of `(image, info)` where `image` is the rendered `Matrix{RGB{Float64}}`
+and `info` is a `RenderInfo` struct containing metadata.
 
 # Keyword Arguments
 
@@ -28,19 +31,26 @@ Main rendering interface using keyword arguments for convenient usage.
 - `clip_percentile`: Percentile for intensity clipping (default: 0.999)
 - `filename`: Save directly to file if provided
 
+# Returns
+- `image::Matrix{RGB{Float64}}`: The rendered image
+- `info::RenderInfo`: Metadata including timing, dimensions, strategy used
+
 # Examples
 ```julia
 # Render exact camera FOV with 20× resolution
-img = render(smld, colormap=:inferno, zoom=20)
+(img, info) = render(smld, colormap=:inferno, zoom=20)
 
-# Render data bounds with 10nm pixels (variable output size)
-img = render(smld, color_by=:z, colormap=:viridis, pixel_size=10.0)
+# Just get the image (discard info)
+img, _ = render(smld, color_by=:z, colormap=:viridis, pixel_size=10.0)
 
-# Manual red color with specific zoom
-img = render(smld, color=colorant"red", zoom=15)
+# Access metadata
+(img, info) = render(smld, zoom=20)
+@show info.elapsed_ns / 1e9  # seconds
+@show info.n_emitters_rendered
+@show info.output_size
 
 # Circle rendering with field coloring
-img = render(smld, strategy=CircleRender(), color_by=:photons, colormap=:plasma, zoom=20)
+(img, info) = render(smld, strategy=CircleRender(), color_by=:photons, colormap=:plasma, zoom=20)
 ```
 """
 function render(smld;
@@ -83,14 +93,14 @@ function render(smld;
     options = RenderOptions(strategy, color_mapping; backend=backend)
 
     # Dispatch to appropriate rendering function
-    result = _render_dispatch(smld, target, options)
+    (image, info) = _render_dispatch(smld, target, options)
 
     # Save to file if requested
     if filename !== nothing
-        save_image(filename, result.image)
+        save_image(filename, image)
     end
 
-    return result  # Always return RenderResult2D
+    return (image, info)
 end
 
 """
@@ -128,7 +138,7 @@ function render(smld, x_edges::AbstractVector, y_edges::AbstractVector;
 end
 
 """
-    render_overlay(smlds::Vector, colors::Vector; kwargs...)
+    render_overlay(smlds::Vector, colors::Vector; kwargs...) -> (image, info)
 
 Render multiple datasets with different colors and overlay them.
 
@@ -140,12 +150,16 @@ Oversaturated regions clip to white.
 - `colors`: Vector of colors (RGB or Symbol)
 - Additional kwargs passed to render()
 
+# Returns
+- `image::Matrix{RGB{Float64}}`: The combined overlay image
+- `info::RenderInfo`: Metadata (timing is total, n_emitters is sum across datasets)
+
 # Example
 ```julia
-img = render_overlay([smld1, smld2],
-                     [colorant"red", colorant"green"],
-                     strategy=GaussianRender(),
-                     zoom=20)
+(img, info) = render_overlay([smld1, smld2],
+                             [colorant"red", colorant"green"],
+                             strategy=GaussianRender(),
+                             zoom=20)
 ```
 """
 function render_overlay(smlds::Vector, colors::Vector;
@@ -156,6 +170,8 @@ function render_overlay(smlds::Vector, colors::Vector;
                        normalize_each::Bool = true,
                        backend::Symbol = :cpu,
                        filename::Union{String, Nothing} = nothing)
+
+    t_start = time_ns()
 
     @assert length(smlds) == length(colors) "Number of datasets must match number of colors"
     @assert length(smlds) > 0 "Must provide at least one dataset"
@@ -171,12 +187,14 @@ function render_overlay(smlds::Vector, colors::Vector;
     end
 
     # Render each dataset
-    images = []
+    images = Matrix{RGB{Float64}}[]
+    total_emitters = 0
     for (smld, color) in zip(smlds, rgb_colors)
         color_mapping = ManualColorMapping(RGB{Float64}(color))
         options = RenderOptions(strategy, color_mapping; backend=backend)
-        result = _render_dispatch(smld, target, options)
-        push!(images, result.image)  # Extract image from result
+        (img, sub_info) = _render_dispatch(smld, target, options)
+        push!(images, img)
+        total_emitters += sub_info.n_emitters_rendered
     end
 
     # Normalize each independently if requested
@@ -187,29 +205,44 @@ function render_overlay(smlds::Vector, colors::Vector;
     end
 
     # Combine additively
-    result = zeros(RGB{Float64}, size(images[1]))
+    combined = zeros(RGB{Float64}, size(images[1]))
     for img in images
-        result .+= img
+        combined .+= img
     end
 
     # Clip to white (need to clamp each channel separately)
-    for i in eachindex(result)
-        pixel = result[i]
-        result[i] = RGB(clamp(pixel.r, 0.0, 1.0),
-                       clamp(pixel.g, 0.0, 1.0),
-                       clamp(pixel.b, 0.0, 1.0))
+    for i in eachindex(combined)
+        pixel = combined[i]
+        combined[i] = RGB(clamp(pixel.r, 0.0, 1.0),
+                         clamp(pixel.g, 0.0, 1.0),
+                         clamp(pixel.b, 0.0, 1.0))
     end
 
     # Save to file if requested
     if filename !== nothing
-        save_image(filename, result)
+        save_image(filename, combined)
     end
 
-    return result
+    elapsed_ns = time_ns() - t_start
+
+    # Build info for overlay (aggregate metadata)
+    info = RenderInfo(
+        elapsed_ns,
+        backend,
+        0,  # device_id (CPU)
+        total_emitters,
+        (target.height, target.width),
+        target.pixel_size,
+        _strategy_symbol(strategy),
+        :manual,  # overlay always uses manual colors
+        nothing   # no field range for overlay
+    )
+
+    return (combined, info)
 end
 
 """
-    render(smlds::Vector; colors, kwargs...)
+    render(smlds::Vector; colors, kwargs...) -> (image, info)
 
 Multi-channel rendering via multiple dispatch.
 
@@ -221,14 +254,18 @@ This is the Julian interface using dispatch on Vector{SMLD}.
 - `colors`: Vector of colors (RGB, Symbol, or ColorType)
 - All other kwargs same as single-channel render()
 
+# Returns
+- `image::Matrix{RGB{Float64}}`: The combined overlay image
+- `info::RenderInfo`: Metadata (timing is total, n_emitters is sum across datasets)
+
 # Example
 ```julia
 # Two-color overlay
-render([smld1, smld2],
-       colors = [colorant"red", colorant"green"],
-       strategy = GaussianRender(),
-       zoom = 20,
-       filename = "overlay.png")
+(img, info) = render([smld1, smld2],
+                     colors = [colorant"red", colorant"green"],
+                     strategy = GaussianRender(),
+                     zoom = 20,
+                     filename = "overlay.png")
 ```
 """
 function render(smlds::Vector;
@@ -299,12 +336,13 @@ function _determine_color_mapping(colormap, color_by, color,
 end
 
 """
-    _render_dispatch(smld, target, options)
+    _render_dispatch(smld, target, options) -> (image, info)
 
 Dispatch to appropriate rendering function based on strategy and color mapping.
+Returns tuple of (image, RenderInfo).
 """
 function _render_dispatch(smld, target::Image2DTarget, options::RenderOptions)
-    t_start = time()
+    t_start = time_ns()
 
     # Extract field value range if using field-based coloring (for colorbar metadata)
     field_value_range = nothing
@@ -328,16 +366,45 @@ function _render_dispatch(smld, target::Image2DTarget, options::RenderOptions)
         img = apply_contrast(img, options.contrast)
     end
 
-    t_end = time()
-    render_time = t_end - t_start
+    elapsed_ns = time_ns() - t_start
 
-    # Create result with field metadata
+    # Build RenderInfo
     n_locs = length(smld.emitters)
-    result = RenderResult2D(img, target, options, render_time, n_locs, field_value_range)
+    info = RenderInfo(
+        elapsed_ns,
+        options.backend,
+        0,  # device_id (0 for CPU)
+        n_locs,
+        (target.height, target.width),
+        target.pixel_size,
+        _strategy_symbol(options.strategy),
+        _color_mode_symbol(options.color_mapping),
+        field_value_range
+    )
 
-    # Always return RenderResult2D (user accesses .image when needed)
-    return result
+    return (img, info)
 end
+
+"""
+    _strategy_symbol(strategy::RenderingStrategy) -> Symbol
+
+Convert strategy type to symbol for RenderInfo.
+"""
+_strategy_symbol(::GaussianRender) = :gaussian
+_strategy_symbol(::HistogramRender) = :histogram
+_strategy_symbol(::CircleRender) = :circle
+_strategy_symbol(::RenderingStrategy) = :unknown
+
+"""
+    _color_mode_symbol(mapping::ColorMapping) -> Symbol
+
+Convert color mapping type to symbol for RenderInfo.
+"""
+_color_mode_symbol(::IntensityColorMapping) = :intensity
+_color_mode_symbol(::FieldColorMapping) = :field
+_color_mode_symbol(::ManualColorMapping) = :manual
+_color_mode_symbol(::GrayscaleMapping) = :grayscale
+_color_mode_symbol(::ColorMapping) = :unknown
 
 """
     _normalize_rgb_image(img::Matrix{RGB{Float64}})

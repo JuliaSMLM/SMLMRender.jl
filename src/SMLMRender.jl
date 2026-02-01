@@ -30,7 +30,8 @@ export ColorMapping
 export IntensityColorMapping, FieldColorMapping, ManualColorMapping, GrayscaleMapping
 export RenderTarget, Image2DTarget
 export ContrastMethod, ContrastOptions
-export RenderOptions, RenderResult2D
+export RenderOptions, RenderInfo
+export RenderResult2D  # Deprecated, kept for backwards compatibility
 
 # Export main interface
 export render  # Multi-channel via dispatch on Vector{SMLD}

@@ -48,6 +48,12 @@ ContrastOptions
 
 ```@docs
 RenderOptions
+RenderInfo
+```
+
+### Deprecated
+
+```@docs
 RenderResult2D
 ```
 

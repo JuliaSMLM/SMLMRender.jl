@@ -89,29 +89,30 @@ println("Simulated $(length(smld.emitters)) localizations")
 
 ```@example quickstart
 # Histogram: Fast binning (pixelated but fast)
-hist_result = render(smld, strategy=HistogramRender(), zoom=10)
+(hist_img, hist_info) = render(smld, strategy=HistogramRender(), zoom=10)
 
 # Gaussian: Smooth blobs
-gauss_result = render(smld, strategy=GaussianRender(), zoom=10)
+(gauss_img, gauss_info) = render(smld, strategy=GaussianRender(), zoom=10)
 
 # Circle: Visualize localization precision
-circle_result = render(smld, strategy=CircleRender(), zoom=20)
+(circle_img, circle_info) = render(smld, strategy=CircleRender(), zoom=20)
 
-println("Histogram: $(size(hist_result.image))")
-println("Gaussian: $(size(gauss_result.image))")
-println("Circle: $(size(circle_result.image))")
+println("Histogram: $(hist_info.output_size), strategy=$(hist_info.strategy)")
+println("Gaussian: $(gauss_info.output_size), strategy=$(gauss_info.strategy)")
+println("Circle: $(circle_info.output_size), strategy=$(circle_info.strategy)")
 ```
 
 ### Color Mapping
 
 ```@example quickstart
 # Intensity-based coloring (traditional SMLM)
-intensity_result = render(smld, colormap=:inferno, zoom=10)
+(intensity_img, intensity_info) = render(smld, colormap=:inferno, zoom=10)
 
 # Field-based coloring (color by photon count)
-field_result = render(smld, color_by=:photons, colormap=:viridis, zoom=10)
+(field_img, field_info) = render(smld, color_by=:photons, colormap=:viridis, zoom=10)
 
-println("Rendered with intensity and field-based coloring")
+println("Intensity mode: $(intensity_info.color_mode)")
+println("Field mode: $(field_info.color_mode), range=$(field_info.field_range)")
 ```
 
 ## Documentation Structure
@@ -122,15 +123,19 @@ println("Rendered with intensity and field-based coloring")
 ## Main Interface
 
 ```@example quickstart
-# Single-channel rendering
-result = render(smld, zoom=10)
+# Single-channel rendering returns (image, info) tuple
+(img, info) = render(smld, zoom=10)
+
+# Access render metadata
+println("Rendered $(info.n_emitters_rendered) emitters in $(info.elapsed_ns / 1e6) ms")
+println("Output size: $(info.output_size), pixel size: $(info.pixel_size_nm) nm")
 
 # Multi-channel rendering (no Colors import needed)
-# result = render([smld1, smld2], colors=[:red, :green], zoom=10)
+# (img, info) = render([smld1, smld2], colors=[:red, :green], zoom=10)
 
 # Export utilities
-# export_colorbar(result, "colorbar.png")
-# save_image("output.png", result.image)
+# export_colorbar(info, "colorbar.png")  # Uses info.field_range
+# save_image("output.png", img)
 nothing # hide
 ```
 

@@ -24,14 +24,24 @@ using SMLMData, SMLMRender
 # Load data
 smld = load_smld("data.h5")
 
-# Render with intensity colormap (zoom=20 means 20 output pixels per camera pixel)
-render(smld, colormap=:inferno, zoom=20, filename="output.png")
+# Render returns (image, info) tuple
+(img, info) = render(smld, colormap=:inferno, zoom=20)
+save_image("output.png", img)
+
+# Access metadata
+@show info.elapsed_ns / 1e9  # render time in seconds
+@show info.n_emitters_rendered
+@show info.output_size
 
 # Render colored by z-depth
-render(smld, color_by=:z, colormap=:turbo, zoom=20, filename="depth.png")
+(img, info) = render(smld, color_by=:z, colormap=:turbo, zoom=20)
+@show info.field_range  # value range for colorbar
+
+# Just get image (discard info)
+img, _ = render(smld, zoom=20, filename="output.png")
 
 # Multi-channel overlay
-render([smld1, smld2], colors=[:red, :green], zoom=20, filename="overlay.png")
+(img, info) = render([smld1, smld2], colors=[:red, :green], zoom=20)
 ```
 
 ### Output Resolution
@@ -42,37 +52,43 @@ Two ways to specify output resolution:
 # zoom: Renders exact camera FOV with subdivided pixels
 # - 128×128 camera with zoom=10 → exactly 1280×1280 output
 # - Output range matches camera FOV exactly
-render(smld, zoom=10)
+(img, info) = render(smld, zoom=10)
+@show info.output_size  # (1280, 1280)
 
 # pixel_size: Uses data bounds with margin (variable output size)
 # - Output size depends on where localizations fell
 # - Useful for cropping to specific regions
-render(smld, pixel_size=10.0)  # 10nm per pixel
+(img, info) = render(smld, pixel_size=10.0)  # 10nm per pixel
+@show info.pixel_size_nm  # 10.0
 ```
 
 ### Rendering Strategies
 
 ```julia
 # Histogram (binning)
-render(smld, strategy=HistogramRender(), zoom=10)
+(img, info) = render(smld, strategy=HistogramRender(), zoom=10)
+@show info.strategy  # :histogram
 
 # Gaussian (smooth blobs)
-render(smld, strategy=GaussianRender(), zoom=20)
+(img, info) = render(smld, strategy=GaussianRender(), zoom=20)
+@show info.strategy  # :gaussian
 
 # Circles (localization precision)
-render(smld, strategy=CircleRender(radius_factor=1.0, line_width=1.0), zoom=50)
+(img, info) = render(smld, strategy=CircleRender(radius_factor=1.0, line_width=1.0), zoom=50)
+@show info.strategy  # :circle
 ```
 
 ### Color Mapping
 
 ```julia
 # Intensity-based
-render(smld, colormap=:inferno)
+(img, info) = render(smld, colormap=:inferno, zoom=20)
+@show info.color_mode  # :intensity
 
 # Field-based (z-depth, photons, frame, etc.)
-render(smld, color_by=:z, colormap=:turbo)
-render(smld, color_by=:photons, colormap=:plasma)
-render(smld, color_by=:frame, colormap=:twilight)
+(img, info) = render(smld, color_by=:z, colormap=:turbo, zoom=20)
+@show info.color_mode  # :field
+@show info.field_range  # (min_z, max_z) for colorbar
 ```
 
 ## Documentation
