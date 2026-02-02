@@ -29,7 +29,7 @@ smld = load_smld("data.h5")
 save_image("output.png", img)
 
 # Access render metadata
-println("Rendered $(info.n_emitters_rendered) emitters in $(info.elapsed_ns/1e6) ms")
+println("Rendered $(info.n_emitters_rendered) emitters in $(info.elapsed_s * 1000) ms")
 
 # Render colored by z-depth
 (img, info) = render(smld, color_by=:z, colormap=:turbo, zoom=20)

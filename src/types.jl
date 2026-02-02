@@ -456,7 +456,7 @@ RenderOptions(strategy::RenderingStrategy, color_mapping::ColorMapping;
 Metadata from a render operation. Follows ecosystem convention for info structs.
 
 # Common fields (ecosystem convention)
-- `elapsed_ns::UInt64`: Execution time in nanoseconds
+- `elapsed_s::Float64`: Execution time in seconds
 - `backend::Symbol`: Compute backend used (:cpu, :cuda, :metal)
 - `device_id::Int`: Device identifier (0 for CPU)
 
@@ -470,7 +470,7 @@ Metadata from a render operation. Follows ecosystem convention for info structs.
 """
 struct RenderInfo
     # Common fields (ecosystem convention)
-    elapsed_ns::UInt64
+    elapsed_s::Float64
     backend::Symbol
     device_id::Int
 
@@ -485,7 +485,7 @@ end
 
 # Helper constructor for building RenderInfo from render context
 function RenderInfo(;
-    elapsed_ns::UInt64,
+    elapsed_s::Float64,
     backend::Symbol,
     device_id::Int = 0,
     n_emitters_rendered::Int,
@@ -495,7 +495,7 @@ function RenderInfo(;
     color_mode::Symbol,
     field_range::Union{Nothing, Tuple{Float64,Float64}} = nothing
 )
-    RenderInfo(elapsed_ns, backend, device_id, n_emitters_rendered,
+    RenderInfo(elapsed_s, backend, device_id, n_emitters_rendered,
                output_size, pixel_size_nm, strategy, color_mode, field_range)
 end
 
@@ -541,7 +541,7 @@ function RenderResult2D(image::Matrix{T}, info::RenderInfo, target::Image2DTarge
         image,
         target,
         options,
-        info.elapsed_ns / 1e9,  # Convert to seconds
+        info.elapsed_s,
         info.n_emitters_rendered,
         info.field_range
     )

@@ -188,7 +188,7 @@ function render_overlay(smlds::Vector, colors::Vector;
     # Render each dataset
     images = []
     total_emitters = 0
-    t_start = time_ns()
+    t_start = time()
     for (smld, color) in zip(smlds, rgb_colors)
         color_mapping = ManualColorMapping(RGB{Float64}(color))
         options = RenderOptions(strategy, color_mapping; backend=backend)
@@ -219,7 +219,7 @@ function render_overlay(smlds::Vector, colors::Vector;
                        clamp(pixel.b, 0.0, 1.0))
     end
 
-    elapsed_ns = time_ns() - t_start
+    elapsed_s = time() - t_start
 
     # Determine strategy symbol
     strategy_sym = if strategy isa HistogramRender
@@ -236,7 +236,7 @@ function render_overlay(smlds::Vector, colors::Vector;
 
     # Build RenderInfo for overlay
     info = RenderInfo(
-        elapsed_ns = elapsed_ns,
+        elapsed_s = elapsed_s,
         backend = backend,
         device_id = 0,
         n_emitters_rendered = total_emitters,
@@ -359,7 +359,7 @@ Dispatch to appropriate rendering function based on strategy and color mapping.
 Returns tuple of (image, RenderInfo).
 """
 function _render_dispatch(smld, target::Image2DTarget, options::RenderOptions)
-    t_start = time_ns()
+    t_start = time()
 
     # Extract field value range if using field-based coloring (for colorbar metadata)
     field_value_range = nothing
@@ -395,7 +395,7 @@ function _render_dispatch(smld, target::Image2DTarget, options::RenderOptions)
         img = apply_contrast(img, options.contrast)
     end
 
-    elapsed_ns = time_ns() - t_start
+    elapsed_s = time() - t_start
 
     # Determine strategy symbol
     strategy_sym = if options.strategy isa HistogramRender
@@ -427,7 +427,7 @@ function _render_dispatch(smld, target::Image2DTarget, options::RenderOptions)
 
     # Build RenderInfo
     info = RenderInfo(
-        elapsed_ns = elapsed_ns,
+        elapsed_s = elapsed_s,
         backend = options.backend,
         device_id = 0,  # CPU = 0
         n_emitters_rendered = length(smld.emitters),

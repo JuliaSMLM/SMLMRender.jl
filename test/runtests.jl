@@ -14,7 +14,7 @@ end
     @testset "RenderInfo struct" begin
         # Test RenderInfo constructor
         info = RenderInfo(
-            elapsed_ns = UInt64(1_000_000),
+            elapsed_s = 0.001,
             backend = :cpu,
             device_id = 0,
             n_emitters_rendered = 100,
@@ -25,7 +25,7 @@ end
             field_range = nothing
         )
 
-        @test info.elapsed_ns == UInt64(1_000_000)
+        @test info.elapsed_s == 0.001
         @test info.backend == :cpu
         @test info.device_id == 0
         @test info.n_emitters_rendered == 100
@@ -37,7 +37,7 @@ end
 
         # Test with field_range
         info_with_range = RenderInfo(
-            elapsed_ns = UInt64(500_000),
+            elapsed_s = 0.0005,
             backend = :cpu,
             device_id = 0,
             n_emitters_rendered = 50,
@@ -70,8 +70,8 @@ end
         @test info isa RenderInfo
 
         # Verify RenderInfo fields
-        @test info.elapsed_ns > 0
-        @test info.elapsed_ns < 60_000_000_000  # Less than 60 seconds
+        @test info.elapsed_s > 0
+        @test info.elapsed_s < 60.0  # Less than 60 seconds
         @test info.backend == :cpu
         @test info.device_id == 0
         @test info.n_emitters_rendered == 3

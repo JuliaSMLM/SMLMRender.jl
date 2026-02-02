@@ -172,7 +172,7 @@ end
 # Render metadata (ecosystem convention)
 struct RenderInfo
     # Common fields (ecosystem convention)
-    elapsed_ns::UInt64       # Execution time in nanoseconds
+    elapsed_s::Float64       # Execution time in seconds
     backend::Symbol          # Compute backend (:cpu, :cuda, :metal)
     device_id::Int           # Device identifier (0 for CPU)
 
@@ -312,7 +312,7 @@ smld = load_smite_2d("data.mat")
 (img, info) = render(smld, colormap=:inferno, zoom=20)
 
 # Access metadata
-println("Rendered $(info.n_emitters_rendered) emitters in $(info.elapsed_ns/1e6) ms")
+println("Rendered $(info.n_emitters_rendered) emitters in $(info.elapsed_s * 1000) ms")
 
 # Save to file
 save_image("output.png", img)
@@ -445,7 +445,7 @@ smld = BasicSMLD(emitters, camera, 2, 1)
 (img, info) = render(smld, colormap=:inferno, zoom=10)
 println("Rendered $(info.n_emitters_rendered) emitters")
 println("Image size: $(info.output_size)")
-println("Render time: $(info.elapsed_ns / 1e6) ms")
+println("Render time: $(info.elapsed_s * 1000) ms")
 
 # Save to file
 save_image("rendered.png", img)
@@ -537,9 +537,9 @@ roi = (400:600, 400:600)
                       roi=roi,
                       filename="roi_circles.png")
 
-println("Histogram: $(info_hist.elapsed_ns / 1e6) ms")
-println("Gaussian: $(info_gauss.elapsed_ns / 1e6) ms")
-println("Circle: $(info_circ.elapsed_ns / 1e6) ms")
+println("Histogram: $(info_hist.elapsed_s * 1000) ms")
+println("Gaussian: $(info_gauss.elapsed_s * 1000) ms")
+println("Circle: $(info_circ.elapsed_s * 1000) ms")
 ```
 
 ### Example 5: Exploring Colormaps
