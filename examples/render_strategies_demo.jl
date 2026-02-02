@@ -176,10 +176,10 @@ function clamp_rgb(img)
 end
 
 # Re-render for comparison figure (could also save earlier)
-result_inferno = render(smld_noisy, strategy=GaussianRender(), colormap=:inferno, zoom=20)
-result_time = render(smld_noisy, strategy=GaussianRender(), color_by=:frame,
+(img_inferno, _) = render(smld_noisy, strategy=GaussianRender(), colormap=:inferno, zoom=20)
+(img_time, _) = render(smld_noisy, strategy=GaussianRender(), color_by=:frame,
                      colormap=:twilight, zoom=20)
-result_circles = render(smld_noisy, strategy=CircleRender(1.0, 1.0, true, nothing),
+(img_circles, _) = render(smld_noisy, strategy=CircleRender(1.0, 1.0, true, nothing),
                         color_by=:frame, colormap=:turbo, zoom=50)
 
 fig = Figure(size=(1600, 500))
@@ -188,21 +188,21 @@ ax1 = Axis(fig[1, 1],
     title = "Gaussian + Inferno\n(intensity colormap)",
     aspect = DataAspect()
 )
-image!(ax1, rotr90(clamp_rgb(result_inferno.image)))
+image!(ax1, rotr90(clamp_rgb(img_inferno)))
 hidedecorations!(ax1)
 
 ax2 = Axis(fig[1, 2],
     title = "Gaussian + Time\n(temporal dynamics)",
     aspect = DataAspect()
 )
-image!(ax2, rotr90(clamp_rgb(result_time.image)))
+image!(ax2, rotr90(clamp_rgb(img_time)))
 hidedecorations!(ax2)
 
 ax3 = Axis(fig[1, 3],
     title = "Circles + Time\n(uncertainty + temporal)",
     aspect = DataAspect()
 )
-image!(ax3, rotr90(clamp_rgb(result_circles.image)))
+image!(ax3, rotr90(clamp_rgb(img_circles)))
 hidedecorations!(ax3)
 
 Label(fig[0, :], "SMLMRender.jl: Rendering Strategy Comparison",

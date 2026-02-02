@@ -451,7 +451,67 @@ RenderOptions(strategy::RenderingStrategy, color_mapping::ColorMapping;
 # ============================================================================
 
 """
+    RenderInfo
+
+Metadata from a render operation. Follows ecosystem convention for info structs.
+
+# Common fields (ecosystem convention)
+- `elapsed_ns::UInt64`: Execution time in nanoseconds
+- `backend::Symbol`: Compute backend used (:cpu, :cuda, :metal)
+- `device_id::Int`: Device identifier (0 for CPU)
+
+# Render-specific fields
+- `n_emitters_rendered::Int`: Number of emitters actually rendered
+- `output_size::Tuple{Int,Int}`: (height, width) of output image
+- `pixel_size_nm::Float64`: Output pixel size in nanometers
+- `strategy::Symbol`: Rendering strategy used (:gaussian, :histogram, :circle, :ellipse)
+- `color_mode::Symbol`: Color mapping mode (:intensity, :field, :categorical, :manual, :grayscale)
+- `field_range::Union{Nothing, Tuple{Float64,Float64}}`: Value range for colorbar (field/categorical modes)
+"""
+struct RenderInfo
+    # Common fields (ecosystem convention)
+    elapsed_ns::UInt64
+    backend::Symbol
+    device_id::Int
+
+    # Render-specific fields
+    n_emitters_rendered::Int
+    output_size::Tuple{Int,Int}
+    pixel_size_nm::Float64
+    strategy::Symbol
+    color_mode::Symbol
+    field_range::Union{Nothing, Tuple{Float64,Float64}}
+end
+
+# Helper constructor for building RenderInfo from render context
+function RenderInfo(;
+    elapsed_ns::UInt64,
+    backend::Symbol,
+    device_id::Int = 0,
+    n_emitters_rendered::Int,
+    output_size::Tuple{Int,Int},
+    pixel_size_nm::Float64,
+    strategy::Symbol,
+    color_mode::Symbol,
+    field_range::Union{Nothing, Tuple{Float64,Float64}} = nothing
+)
+    RenderInfo(elapsed_ns, backend, device_id, n_emitters_rendered,
+               output_size, pixel_size_nm, strategy, color_mode, field_range)
+end
+
+"""
     RenderResult2D{T}
+
+!!! warning "Deprecated"
+    `RenderResult2D` is deprecated. Use the tuple return pattern instead:
+    ```julia
+    # Old API (deprecated)
+    result = render(smld, zoom=20)
+    img = result.image
+
+    # New API
+    (img, info) = render(smld, zoom=20)
+    ```
 
 Result of a 2D rendering operation.
 
@@ -469,4 +529,20 @@ struct RenderResult2D{T}
     render_time::Float64
     n_localizations::Int
     field_value_range::Union{Tuple{Float64, Float64}, Nothing}  # Actual field range used (for colorbar)
+end
+
+# Conversion constructor: build deprecated RenderResult2D from new tuple pattern
+function RenderResult2D(image::Matrix{T}, info::RenderInfo, target::Image2DTarget, options::RenderOptions) where T
+    Base.depwarn(
+        "RenderResult2D is deprecated. Use tuple unpacking: `(img, info) = render(smld; ...)`",
+        :RenderResult2D
+    )
+    RenderResult2D{T}(
+        image,
+        target,
+        options,
+        info.elapsed_ns / 1e9,  # Convert to seconds
+        info.n_emitters_rendered,
+        info.field_range
+    )
 end

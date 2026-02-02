@@ -4,15 +4,15 @@ High-performance rendering for Single Molecule Localization Microscopy (SMLM) da
 
 ## Exports Summary
 
-Total exports: 23 (1 function, 17 types, 5 utilities)
+Total exports: 24 (1 function, 18 types, 5 utilities)
 
-**Main Function:** `render()`
+**Main Function:** `render()` - returns `(image, info)` tuple
 
 **Rendering Strategies:** `RenderingStrategy`, `Render2DStrategy`, `HistogramRender`, `GaussianRender`, `CircleRender`, `EllipseRender`
 
 **Color Mapping:** `ColorMapping`, `IntensityColorMapping`, `FieldColorMapping`, `ManualColorMapping`, `GrayscaleMapping`, `CategoricalColorMapping`
 
-**Render Configuration:** `RenderTarget`, `Image2DTarget`, `ContrastMethod`, `ContrastOptions`, `RenderOptions`, `RenderResult2D`
+**Render Configuration:** `RenderTarget`, `Image2DTarget`, `ContrastMethod`, `ContrastOptions`, `RenderOptions`, `RenderInfo`, `RenderResult2D` (deprecated)
 
 **Utilities:** `create_target_from_smld`, `list_recommended_colormaps`, `save_image`, `export_colorbar`
 
@@ -25,7 +25,7 @@ SMLMRender converts localization data into publication-quality images through a 
 1. **Target Specification** - Define output image dimensions and physical bounds (zoom vs pixel_size modes)
 2. **Rendering Strategy** - Choose algorithm for converting localizations to pixels (Histogram, Gaussian, Circle)
 3. **Color Mapping** - Map intensity or field values to colors (intensity-based, field-based, or manual)
-4. **Result** - Get `RenderResult2D` containing image, metadata, and timing information
+4. **Result** - Get `(image, info)` tuple containing the rendered image and `RenderInfo` metadata
 
 ### Resolution Modes
 
@@ -169,24 +169,33 @@ struct RenderOptions{S<:RenderingStrategy, C<:ColorMapping}
     backend::Symbol  # :cpu, :cuda, :metal, :auto
 end
 
-# Rendering result
-struct RenderResult2D{T}
-    image::Matrix{T}                                    # Rendered image (RGB or grayscale)
-    target::Image2DTarget                               # Target specification
-    options::RenderOptions                              # Options used
-    render_time::Float64                                # Render time in seconds
-    n_localizations::Int                                # Number of localizations rendered
-    field_value_range::Union{Tuple{Float64, Float64}, Nothing}  # Actual field range (for colorbar)
+# Render metadata (ecosystem convention)
+struct RenderInfo
+    # Common fields (ecosystem convention)
+    elapsed_ns::UInt64       # Execution time in nanoseconds
+    backend::Symbol          # Compute backend (:cpu, :cuda, :metal)
+    device_id::Int           # Device identifier (0 for CPU)
+
+    # Render-specific fields
+    n_emitters_rendered::Int              # Number of emitters actually rendered
+    output_size::Tuple{Int,Int}           # (height, width) of output image
+    pixel_size_nm::Float64                # Output pixel size in nanometers
+    strategy::Symbol                      # :gaussian, :histogram, :circle, :ellipse
+    color_mode::Symbol                    # :intensity, :field, :categorical, :manual, :grayscale
+    field_range::Union{Nothing, Tuple{Float64,Float64}}  # Value range for colorbar
 end
+
+# DEPRECATED: Use tuple unpacking instead
+# struct RenderResult2D{T} - deprecated, use (image, info) = render(...) pattern
 ```
 
 ## Core Functions
 
 ### Main Rendering Interface
 
-#### `render(smld; kwargs...) -> RenderResult2D`
+#### `render(smld; kwargs...) -> (Matrix{RGB{Float64}}, RenderInfo)`
 
-Main rendering function using keyword arguments for convenient usage.
+Main rendering function using keyword arguments for convenient usage. Returns a tuple of (image, info).
 
 **Resolution (choose one):**
 - `zoom::Real` - Renders exact camera FOV with `camera_pixels × zoom` output
@@ -212,9 +221,9 @@ Main rendering function using keyword arguments for convenient usage.
 - `field_clip_percentiles::Union{Tuple, Nothing}` - Percentile clipping for fields (default: `(0.01, 0.99)`)
 - `filename::Union{String, Nothing}` - Save directly to file if provided
 
-**Returns:** `RenderResult2D` containing image, metadata, and timing information
+**Returns:** `(image, info)` tuple where `image` is `Matrix{RGB{Float64}}` and `info` is `RenderInfo`
 
-#### `render(smld, x_edges, y_edges; kwargs...) -> RenderResult2D`
+#### `render(smld, x_edges, y_edges; kwargs...) -> (Matrix{RGB{Float64}}, RenderInfo)`
 
 Render with explicit pixel edges (advanced usage).
 
@@ -224,7 +233,7 @@ Render with explicit pixel edges (advanced usage).
 - `y_edges::AbstractVector` - Pixel edges in μm (length = height + 1)
 - `kwargs...` - Same as main render function
 
-#### `render(smlds::Vector; colors::Vector, kwargs...) -> Matrix{RGB{Float64}}`
+#### `render(smlds::Vector; colors::Vector, kwargs...) -> (Matrix{RGB{Float64}}, RenderInfo)`
 
 Multi-channel rendering via dispatch on `Vector`.
 
@@ -234,7 +243,7 @@ Multi-channel rendering via dispatch on `Vector`.
 - `normalize_each::Bool` - Normalize each channel independently (default: `true`)
 - All other kwargs same as single-channel render
 
-**Returns:** RGB image (not RenderResult2D) with overlaid channels
+**Returns:** `(image, info)` tuple with overlaid channels image and combined RenderInfo
 
 ### Utilities
 
@@ -300,10 +309,10 @@ using SMLMData, SMLMRender
 smld = load_smite_2d("data.mat")
 
 # Render with zoom=20 (20 output pixels per camera pixel)
-result = render(smld, colormap=:inferno, zoom=20)
+(img, info) = render(smld, colormap=:inferno, zoom=20)
 
-# Access the image
-img = result.image
+# Access metadata
+println("Rendered $(info.n_emitters_rendered) emitters in $(info.elapsed_ns/1e6) ms")
 
 # Save to file
 save_image("output.png", img)
@@ -313,23 +322,23 @@ save_image("output.png", img)
 
 ```julia
 # Color by z-depth
-result = render(smld, color_by=:z, colormap=:turbo, zoom=20)
+(img, info) = render(smld, color_by=:z, colormap=:turbo, zoom=20)
 
 # Color by photon count
-result = render(smld, color_by=:photons, colormap=:viridis, zoom=20)
+(img, info) = render(smld, color_by=:photons, colormap=:viridis, zoom=20)
 
-# Export colorbar for the field
-export_colorbar(result, "colorbar.png")
+# Export colorbar using info.field_range
+export_colorbar(:viridis, info.field_range, "Photons", "colorbar.png")
 ```
 
 ### Categorical Coloring (Clusters/IDs)
 
 ```julia
 # Color by cluster ID - each cluster gets distinct color from palette
-result = render(smld, color_by=:id, categorical=true, zoom=20)
+(img, info) = render(smld, color_by=:id, categorical=true, zoom=20)
 
 # Custom palette (tab10 is default)
-result = render(smld, color_by=:id, colormap=:Set1_9, categorical=true, zoom=20)
+(img, info) = render(smld, color_by=:id, colormap=:Set1_9, categorical=true, zoom=20)
 
 # Available categorical palettes (high-contrast, distinct colors):
 # :tab10   - 10 colors (most popular, Matplotlib default)
@@ -348,7 +357,7 @@ result = render(smld, color_by=:id, colormap=:Set1_9, categorical=true, zoom=20)
 
 ```julia
 # Two-color overlay
-img = render([smld1, smld2], 
+(img, info) = render([smld1, smld2],
              colors=[colorant"red", colorant"green"],
              zoom=20)
 
@@ -363,13 +372,13 @@ render([smld1, smld2],
 
 ```julia
 # Render ROI: camera pixels 430-860 in x, full y-range
-result = render(smld, 
-                colormap=:inferno, 
-                zoom=20, 
+(img, info) = render(smld,
+                colormap=:inferno,
+                zoom=20,
                 roi=(430:860, :))
 
 # Render specific x and y region
-result = render(smld,
+(img, info) = render(smld,
                 colormap=:hot,
                 zoom=15,
                 roi=(100:200, 50:150))
@@ -379,13 +388,13 @@ result = render(smld,
 
 ```julia
 # Histogram rendering (fast)
-result = render(smld, 
+(img, info) = render(smld,
                 strategy=HistogramRender(),
                 colormap=:hot,
                 zoom=10)
 
 # Gaussian rendering with custom parameters
-result = render(smld,
+(img, info) = render(smld,
                 strategy=GaussianRender(n_sigmas=4.0,
                                        use_localization_precision=true,
                                        fixed_sigma=nothing,
@@ -394,7 +403,7 @@ result = render(smld,
                 zoom=20)
 
 # Circle rendering to visualize precision
-result = render(smld,
+(img, info) = render(smld,
                 strategy=CircleRender(radius_factor=2.0,  # 2σ circles
                                      line_width=1.0,
                                      use_localization_precision=true,
@@ -408,11 +417,11 @@ result = render(smld,
 
 ```julia
 # 10nm pixels, output size determined by data bounds
-result = render(smld, pixel_size=10.0, colormap=:viridis)
+(img, info) = render(smld, pixel_size=10.0, colormap=:viridis)
 
 # Adjust margin around data
 target = create_target_from_smld(smld, pixel_size=5.0, margin=0.1)  # 10% margin
-result = render(smld, target=target, colormap=:inferno)
+(img, info) = render(smld, target=target, colormap=:inferno)
 ```
 
 ## Complete Examples
@@ -426,20 +435,20 @@ using Colors
 # Create test data with localization precision
 camera = IdealCamera(128, 128, 100.0)  # 128×128 pixels, 100nm pixel size
 emitters = [
-    Emitter2DFit(5.0, 5.0, 1000.0, 10.0, 0.020, 0.020, 50.0, 2.0, 1, 1, 1, 1),
-    Emitter2DFit(6.0, 6.0, 1200.0, 10.0, 0.018, 0.018, 60.0, 2.0, 1, 1, 1, 2),
-    Emitter2DFit(7.0, 7.0, 1100.0, 10.0, 0.021, 0.021, 55.0, 2.0, 2, 1, 1, 3)
+    Emitter2DFit{Float64}(5.0, 5.0, 1000.0, 10.0, 0.020, 0.020, 50.0, 2.0; frame=1, id=1),
+    Emitter2DFit{Float64}(6.0, 6.0, 1200.0, 10.0, 0.018, 0.018, 60.0, 2.0; frame=1, id=2),
+    Emitter2DFit{Float64}(7.0, 7.0, 1100.0, 10.0, 0.021, 0.021, 55.0, 2.0; frame=2, id=3)
 ]
 smld = BasicSMLD(emitters, camera, 2, 1)
 
-# Render with intensity colormap
-result = render(smld, colormap=:inferno, zoom=10)
-println("Rendered $(result.n_localizations) localizations")
-println("Image size: $(size(result.image))")
-println("Render time: $(result.render_time) seconds")
+# Render with intensity colormap - returns (image, info) tuple
+(img, info) = render(smld, colormap=:inferno, zoom=10)
+println("Rendered $(info.n_emitters_rendered) emitters")
+println("Image size: $(info.output_size)")
+println("Render time: $(info.elapsed_ns / 1e6) ms")
 
 # Save to file
-save_image("rendered.png", result.image)
+save_image("rendered.png", img)
 ```
 
 ### Example 2: Field Coloring with Colorbar
@@ -451,20 +460,21 @@ using SMLMData, SMLMRender
 smld = load_smite_3d("3d_data.mat")
 
 # Render colored by z-depth
-result = render(smld, 
-                color_by=:z, 
+(img, info) = render(smld,
+                color_by=:z,
                 colormap=:turbo,
                 zoom=20,
                 filename="depth_map.png")
 
-# Export colorbar showing the z-range
-export_colorbar(result, "depth_colorbar.png",
+# Export colorbar using the field_range from info
+export_colorbar(:turbo, info.field_range, "Z-depth (μm)",
+                "depth_colorbar.png",
                 orientation=:vertical,
                 size=(100, 400))
 
 # Manual colorbar (if you need custom parameters)
-export_colorbar(:turbo, 
-                (-500.0, 500.0), 
+export_colorbar(:turbo,
+                (-500.0, 500.0),
                 "Z-depth (nm)",
                 "custom_colorbar.png")
 ```
@@ -479,8 +489,8 @@ using Colors
 smld_ch1 = load_smite_2d("channel1.mat")
 smld_ch2 = load_smite_2d("channel2.mat")
 
-# Create overlay with normalization
-img = render([smld_ch1, smld_ch2],
+# Create overlay with normalization - returns tuple
+(img, info) = render([smld_ch1, smld_ch2],
              colors=[colorant"red", colorant"green"],
              zoom=20,
              normalize_each=true)  # Normalize each channel independently
@@ -506,30 +516,30 @@ smld = load_smite_2d("dense_data.mat")
 roi = (400:600, 400:600)
 
 # Compare different strategies on same ROI
-histogram_result = render(smld,
+(_, info_hist) = render(smld,
                          strategy=HistogramRender(),
                          colormap=:hot,
                          zoom=10,
                          roi=roi,
                          filename="roi_histogram.png")
 
-gaussian_result = render(smld,
+(_, info_gauss) = render(smld,
                         strategy=GaussianRender(),
                         colormap=:inferno,
                         zoom=20,
                         roi=roi,
                         filename="roi_gaussian.png")
 
-circle_result = render(smld,
+(_, info_circ) = render(smld,
                       strategy=CircleRender(radius_factor=1.0, line_width=1.5),
-                      colormap=:viridis,
+                      color=:red,
                       zoom=50,
                       roi=roi,
                       filename="roi_circles.png")
 
-println("Histogram: $(histogram_result.render_time) s")
-println("Gaussian: $(gaussian_result.render_time) s")
-println("Circle: $(circle_result.render_time) s")
+println("Histogram: $(info_hist.elapsed_ns / 1e6) ms")
+println("Gaussian: $(info_gauss.elapsed_ns / 1e6) ms")
+println("Circle: $(info_circ.elapsed_ns / 1e6) ms")
 ```
 
 ### Example 5: Exploring Colormaps
@@ -568,7 +578,7 @@ using SMLMData, SMLMRender
 smld = load_smite_2d("data.mat")
 
 # Gaussian rendering with fixed sigma (ignore localization precision)
-result = render(smld,
+(img, info) = render(smld,
                 strategy=GaussianRender(n_sigmas=3.0,
                                        use_localization_precision=false,
                                        fixed_sigma=20.0,  # 20nm fixed sigma
@@ -577,7 +587,7 @@ result = render(smld,
                 zoom=20)
 
 # Circle rendering with fixed radius
-result = render(smld,
+(img, info) = render(smld,
                 strategy=CircleRender(radius_factor=1.0,
                                      line_width=2.0,
                                      use_localization_precision=false,
@@ -586,7 +596,7 @@ result = render(smld,
                 zoom=30)
 
 # Field coloring with explicit value range (no auto-scaling)
-result = render(smld,
+(img, info) = render(smld,
                 color_by=:photons,
                 colormap=:plasma,
                 field_range=(500.0, 5000.0),  # Explicit range

@@ -98,14 +98,14 @@ function render(smld;
     options = RenderOptions(strategy, color_mapping; backend=backend)
 
     # Dispatch to appropriate rendering function
-    result = _render_dispatch(smld, target, options)
+    (img, info) = _render_dispatch(smld, target, options)
 
     # Save to file if requested
     if filename !== nothing
-        save_image(filename, result.image)
+        save_image(filename, img)
     end
 
-    return result  # Always return RenderResult2D
+    return (img, info)
 end
 
 """
@@ -187,11 +187,14 @@ function render_overlay(smlds::Vector, colors::Vector;
 
     # Render each dataset
     images = []
+    total_emitters = 0
+    t_start = time_ns()
     for (smld, color) in zip(smlds, rgb_colors)
         color_mapping = ManualColorMapping(RGB{Float64}(color))
         options = RenderOptions(strategy, color_mapping; backend=backend)
-        result = _render_dispatch(smld, target, options)
-        push!(images, result.image)  # Extract image from result
+        (img, info) = _render_dispatch(smld, target, options)
+        push!(images, img)
+        total_emitters += info.n_emitters_rendered
     end
 
     # Normalize each independently if requested
@@ -203,25 +206,52 @@ function render_overlay(smlds::Vector, colors::Vector;
     end
 
     # Combine additively
-    result = zeros(RGB{Float64}, size(images[1]))
+    combined = zeros(RGB{Float64}, size(images[1]))
     for img in images
-        result .+= img
+        combined .+= img
     end
 
     # Clip to white (need to clamp each channel separately)
-    for i in eachindex(result)
-        pixel = result[i]
-        result[i] = RGB(clamp(pixel.r, 0.0, 1.0),
+    for i in eachindex(combined)
+        pixel = combined[i]
+        combined[i] = RGB(clamp(pixel.r, 0.0, 1.0),
                        clamp(pixel.g, 0.0, 1.0),
                        clamp(pixel.b, 0.0, 1.0))
     end
 
-    # Save to file if requested
-    if filename !== nothing
-        save_image(filename, result)
+    elapsed_ns = time_ns() - t_start
+
+    # Determine strategy symbol
+    strategy_sym = if strategy isa HistogramRender
+        :histogram
+    elseif strategy isa GaussianRender
+        :gaussian
+    elseif strategy isa CircleRender
+        :circle
+    elseif strategy isa EllipseRender
+        :ellipse
+    else
+        :unknown
     end
 
-    return result
+    # Build RenderInfo for overlay
+    info = RenderInfo(
+        elapsed_ns = elapsed_ns,
+        backend = backend,
+        device_id = 0,
+        n_emitters_rendered = total_emitters,
+        output_size = (size(combined, 1), size(combined, 2)),
+        pixel_size_nm = target.pixel_size,
+        strategy = strategy_sym,
+        color_mode = :manual  # Overlay uses manual colors
+    )
+
+    # Save to file if requested
+    if filename !== nothing
+        save_image(filename, combined)
+    end
+
+    return (combined, info)
 end
 
 """
@@ -323,18 +353,28 @@ function _determine_color_mapping(colormap, color_by, color, categorical,
 end
 
 """
-    _render_dispatch(smld, target, options)
+    _render_dispatch(smld, target, options) -> (image, info)
 
 Dispatch to appropriate rendering function based on strategy and color mapping.
+Returns tuple of (image, RenderInfo).
 """
 function _render_dispatch(smld, target::Image2DTarget, options::RenderOptions)
-    t_start = time()
+    t_start = time_ns()
 
     # Extract field value range if using field-based coloring (for colorbar metadata)
     field_value_range = nothing
     if options.color_mapping isa FieldColorMapping
         # prepare_field_range returns (range, frame_offsets) - we only need range for metadata
         field_value_range, _ = prepare_field_range(smld, options.color_mapping)
+    elseif options.color_mapping isa CategoricalColorMapping
+        # For categorical, extract min/max of integer field for potential colorbar
+        field = options.color_mapping.field
+        if hasproperty(smld.emitters, field)
+            vals = getproperty(smld.emitters, field)
+            if !isempty(vals)
+                field_value_range = (Float64(minimum(vals)), Float64(maximum(vals)))
+            end
+        end
     end
 
     # Dispatch on strategy type
@@ -355,15 +395,50 @@ function _render_dispatch(smld, target::Image2DTarget, options::RenderOptions)
         img = apply_contrast(img, options.contrast)
     end
 
-    t_end = time()
-    render_time = t_end - t_start
+    elapsed_ns = time_ns() - t_start
 
-    # Create result with field metadata
-    n_locs = length(smld.emitters)
-    result = RenderResult2D(img, target, options, render_time, n_locs, field_value_range)
+    # Determine strategy symbol
+    strategy_sym = if options.strategy isa HistogramRender
+        :histogram
+    elseif options.strategy isa GaussianRender
+        :gaussian
+    elseif options.strategy isa CircleRender
+        :circle
+    elseif options.strategy isa EllipseRender
+        :ellipse
+    else
+        :unknown
+    end
 
-    # Always return RenderResult2D (user accesses .image when needed)
-    return result
+    # Determine color mode symbol
+    color_mode = if options.color_mapping isa IntensityColorMapping
+        :intensity
+    elseif options.color_mapping isa FieldColorMapping
+        :field
+    elseif options.color_mapping isa CategoricalColorMapping
+        :categorical
+    elseif options.color_mapping isa ManualColorMapping
+        :manual
+    elseif options.color_mapping isa GrayscaleMapping
+        :grayscale
+    else
+        :unknown
+    end
+
+    # Build RenderInfo
+    info = RenderInfo(
+        elapsed_ns = elapsed_ns,
+        backend = options.backend,
+        device_id = 0,  # CPU = 0
+        n_emitters_rendered = length(smld.emitters),
+        output_size = (size(img, 1), size(img, 2)),
+        pixel_size_nm = target.pixel_size,
+        strategy = strategy_sym,
+        color_mode = color_mode,
+        field_range = field_value_range
+    )
+
+    return (img, info)
 end
 
 """

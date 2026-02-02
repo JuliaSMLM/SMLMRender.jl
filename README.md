@@ -24,14 +24,21 @@ using SMLMData, SMLMRender
 # Load data
 smld = load_smld("data.h5")
 
-# Render with intensity colormap (zoom=20 means 20 output pixels per camera pixel)
-render(smld, colormap=:inferno, zoom=20, filename="output.png")
+# Render returns (image, info) tuple
+(img, info) = render(smld, colormap=:inferno, zoom=20)
+save_image("output.png", img)
+
+# Access render metadata
+println("Rendered $(info.n_emitters_rendered) emitters in $(info.elapsed_ns/1e6) ms")
 
 # Render colored by z-depth
-render(smld, color_by=:z, colormap=:turbo, zoom=20, filename="depth.png")
+(img, info) = render(smld, color_by=:z, colormap=:turbo, zoom=20)
 
 # Multi-channel overlay
-render([smld1, smld2], colors=[:red, :green], zoom=20, filename="overlay.png")
+(img, info) = render([smld1, smld2], colors=[:red, :green], zoom=20)
+
+# Direct save with filename kwarg
+render(smld, colormap=:inferno, zoom=20, filename="output.png")
 ```
 
 ### Output Resolution

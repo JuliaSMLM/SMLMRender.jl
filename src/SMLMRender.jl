@@ -50,7 +50,7 @@ export ColorMapping
 export IntensityColorMapping, FieldColorMapping, ManualColorMapping, GrayscaleMapping, CategoricalColorMapping
 export RenderTarget, Image2DTarget
 export ContrastMethod, ContrastOptions
-export RenderOptions, RenderResult2D
+export RenderOptions, RenderInfo, RenderResult2D
 
 # Export main interface
 export render  # Multi-channel via dispatch on Vector{SMLD}
