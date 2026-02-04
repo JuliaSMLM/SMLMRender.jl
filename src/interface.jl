@@ -2,6 +2,45 @@
 
 using Colors
 
+# ============================================================================
+# Primary form: render(smld, target, options)
+# ============================================================================
+
+"""
+    render(smld, target::Image2DTarget, options::RenderOptions) -> (Matrix{RGB{Float64}}, RenderInfo)
+
+Primary rendering interface using explicit target and options configuration.
+
+# Arguments
+- `smld`: SMLD dataset containing emitters
+- `target::Image2DTarget`: Output image specification (dimensions, pixel size, physical bounds)
+- `options::RenderOptions`: Rendering configuration (strategy, color mapping, backend)
+
+# Returns
+Tuple of `(image, info)` where:
+- `image::Matrix{RGB{Float64}}`: Rendered image
+- `info::RenderInfo`: Metadata including timing, dimensions, and color range
+
+# Example
+```julia
+# Create target and options explicitly
+target = create_target_from_smld(smld, zoom=20)
+options = RenderOptions(GaussianRender(), IntensityColorMapping(:inferno, 0.99))
+
+# Render
+(img, info) = render(smld, target, options)
+```
+
+See also: [`render(smld; kwargs...)`](@ref) for the convenience interface.
+"""
+function render(smld, target::Image2DTarget, options::RenderOptions)
+    return _render_dispatch(smld, target, options)
+end
+
+# ============================================================================
+# Convenience form: render(smld; kwargs...)
+# ============================================================================
+
 """
     render(smld; kwargs...)
 
@@ -97,8 +136,8 @@ function render(smld;
     # Create render options
     options = RenderOptions(strategy, color_mapping; backend=backend)
 
-    # Dispatch to appropriate rendering function
-    (img, info) = _render_dispatch(smld, target, options)
+    # Forward to primary form
+    (img, info) = render(smld, target, options)
 
     # Save to file if requested
     if filename !== nothing

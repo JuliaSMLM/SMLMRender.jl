@@ -193,9 +193,27 @@ end
 
 ### Main Rendering Interface
 
+#### `render(smld, target::Image2DTarget, options::RenderOptions) -> (Matrix{RGB{Float64}}, RenderInfo)`
+
+Primary rendering interface using explicit configuration structs.
+
+**Arguments:**
+- `smld` - SMLD dataset containing emitters
+- `target::Image2DTarget` - Output image specification (dimensions, pixel size, physical bounds)
+- `options::RenderOptions` - Rendering configuration (strategy, color mapping, backend)
+
+**Returns:** `(image, info)` tuple
+
+**Example:**
+```julia
+target = create_target_from_smld(smld, zoom=20)
+options = RenderOptions(GaussianRender(), IntensityColorMapping(:inferno, 0.99))
+(img, info) = render(smld, target, options)
+```
+
 #### `render(smld; kwargs...) -> (Matrix{RGB{Float64}}, RenderInfo)`
 
-Main rendering function using keyword arguments for convenient usage. Returns a tuple of (image, info).
+Convenience interface using keyword arguments. Constructs target and options internally, then forwards to the primary form.
 
 **Resolution (choose one):**
 - `zoom::Real` - Renders exact camera FOV with `camera_pixels × zoom` output

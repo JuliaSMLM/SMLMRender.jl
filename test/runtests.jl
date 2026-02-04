@@ -161,6 +161,25 @@ end
         @test info.color_mode == :manual
     end
 
+    @testset "Primary form render(smld, target, options)" begin
+        camera = IdealCamera(32, 32, 100.0)
+        emitters = [make_emitter2d(1.6, 1.6, 1000.0, 10.0, 0.02, 0.02, 50.0, 2.0; id=1)]
+        smld = BasicSMLD(emitters, camera, 1, 1)
+
+        # Create target and options explicitly
+        target = create_target_from_smld(smld, zoom=5)
+        options = RenderOptions(GaussianRender(), IntensityColorMapping(:inferno, 0.99))
+
+        # Test primary form
+        result = render(smld, target, options)
+        @test result isa Tuple{Matrix{RGB{Float64}}, RenderInfo}
+
+        (img, info) = result
+        @test size(img) == (target.height, target.width)
+        @test info.strategy == :gaussian
+        @test info.color_mode == :intensity
+    end
+
     @testset "Tuple unpacking patterns" begin
         camera = IdealCamera(32, 32, 100.0)
         emitters = [make_emitter2d(1.6, 1.6, 1000.0, 10.0, 0.02, 0.02, 50.0, 2.0; id=1)]
