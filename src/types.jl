@@ -413,38 +413,81 @@ end
 ContrastOptions(method::ContrastMethod) = ContrastOptions(method, 0.999, 1.0)
 
 # ============================================================================
-# Render Options (Comprehensive Configuration)
+# Render Configuration (Flat — fields match render() kwargs exactly)
 # ============================================================================
 
 """
-    RenderConfig{S<:RenderingStrategy, C<:ColorMapping}
+    RenderConfig <: AbstractSMLMConfig
 
-Complete configuration for rendering.
+Flat rendering configuration. Fields correspond 1:1 with `render()` keyword arguments.
 
 # Fields
-- `strategy::S`: Rendering algorithm (Histogram, Gaussian, Circle)
-- `color_mapping::C`: Color mapping strategy
-- `contrast::Union{ContrastOptions, Nothing}`: Contrast enhancement (optional)
-- `backend::Symbol`: Computation backend (:cpu, :cuda, :metal, :auto)
+- `strategy::RenderingStrategy`: Rendering algorithm (default: `GaussianRender()`)
+- `pixel_size::Union{Float64, Nothing}`: Pixel size in nm (data bounds mode)
+- `zoom::Union{Float64, Nothing}`: Zoom factor (camera FOV mode)
+- `roi::Union{Tuple, Nothing}`: Camera pixel ROI as `(x_range, y_range)`
+- `target::Union{Image2DTarget, Nothing}`: Explicit target specification
+- `colormap::Union{Symbol, Nothing}`: Intensity-based colormap (`:inferno`, `:viridis`, etc.)
+- `color_by::Union{Symbol, Nothing}`: Field for field-based coloring (`:z`, `:photons`, etc.)
+- `color::Union{RGB, Symbol, Nothing}`: Manual color
+- `categorical::Bool`: Use categorical palette for integer fields (default: `false`)
+- `clip_percentile::Float64`: Intensity clipping percentile (default: `0.99`)
+- `field_range::Union{Tuple{Float64,Float64}, Symbol}`: Value range or `:auto`
+- `field_clip_percentiles::Union{Tuple{Float64,Float64}, Nothing}`: Percentile clipping
+- `backend::Symbol`: Computation backend (default: `:cpu`)
+- `filename::Union{String, Nothing}`: Save to file if provided
 """
-struct RenderConfig{S<:RenderingStrategy, C<:ColorMapping} <: AbstractSMLMConfig
-    strategy::S
-    color_mapping::C
-    contrast::Union{ContrastOptions, Nothing}
+struct RenderConfig <: AbstractSMLMConfig
+    strategy::RenderingStrategy
+    pixel_size::Union{Float64, Nothing}
+    zoom::Union{Float64, Nothing}
+    roi::Union{Tuple, Nothing}
+    target::Union{Image2DTarget, Nothing}
+    colormap::Union{Symbol, Nothing}
+    color_by::Union{Symbol, Nothing}
+    color::Union{RGB, Symbol, Nothing}
+    categorical::Bool
+    clip_percentile::Float64
+    field_range::Union{Tuple{Float64, Float64}, Symbol}
+    field_clip_percentiles::Union{Tuple{Float64, Float64}, Nothing}
     backend::Symbol
-
-    function RenderConfig(strategy::S, color_mapping::C,
-                          contrast::Union{ContrastOptions, Nothing},
-                          backend::Symbol) where {S,C}
-        @assert backend in (:cpu, :cuda, :metal, :auto) "Invalid backend"
-        new{S,C}(strategy, color_mapping, contrast, backend)
-    end
+    filename::Union{String, Nothing}
 end
 
-# Convenience constructor
-RenderConfig(strategy::RenderingStrategy, color_mapping::ColorMapping;
-              contrast=nothing, backend=:cpu) =
-    RenderConfig(strategy, color_mapping, contrast, backend)
+function RenderConfig(;
+    strategy::RenderingStrategy = GaussianRender(),
+    pixel_size::Union{Real, Nothing} = nothing,
+    zoom::Union{Real, Nothing} = nothing,
+    roi::Union{Tuple, Nothing} = nothing,
+    target::Union{Image2DTarget, Nothing} = nothing,
+    colormap::Union{Symbol, Nothing} = nothing,
+    color_by::Union{Symbol, Nothing} = nothing,
+    color::Union{RGB, Symbol, Nothing} = nothing,
+    categorical::Bool = false,
+    clip_percentile::Real = 0.99,
+    field_range::Union{Tuple{Real, Real}, Symbol} = :auto,
+    field_clip_percentiles::Union{Tuple{Real, Real}, Nothing} = (0.01, 0.99),
+    backend::Symbol = :cpu,
+    filename::Union{String, Nothing} = nothing)
+
+    RenderConfig(
+        strategy,
+        pixel_size === nothing ? nothing : Float64(pixel_size),
+        zoom === nothing ? nothing : Float64(zoom),
+        roi,
+        target,
+        colormap,
+        color_by,
+        color,
+        categorical,
+        Float64(clip_percentile),
+        field_range isa Tuple ? (Float64(field_range[1]), Float64(field_range[2])) : field_range,
+        field_clip_percentiles === nothing ? nothing :
+            (Float64(field_clip_percentiles[1]), Float64(field_clip_percentiles[2])),
+        backend,
+        filename
+    )
+end
 
 # ============================================================================
 # Results

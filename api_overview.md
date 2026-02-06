@@ -161,16 +161,26 @@ struct ContrastOptions
     gamma::Float64             # Power-law gamma adjustment
 end
 
-# Complete rendering configuration
-struct RenderConfig{S<:RenderingStrategy, C<:ColorMapping}
-    strategy::S
-    color_mapping::C
-    contrast::Union{ContrastOptions, Nothing}
-    backend::Symbol  # :cpu, :cuda, :metal, :auto
+# Flat rendering configuration (fields match render() kwargs exactly)
+struct RenderConfig <: AbstractSMLMConfig
+    strategy::RenderingStrategy              # default: GaussianRender()
+    pixel_size::Union{Float64, Nothing}      # Pixel size in nm (data bounds mode)
+    zoom::Union{Float64, Nothing}            # Zoom factor (camera FOV mode)
+    roi::Union{Tuple, Nothing}               # Camera pixel ROI
+    target::Union{Image2DTarget, Nothing}    # Explicit target
+    colormap::Union{Symbol, Nothing}         # Intensity colormap
+    color_by::Union{Symbol, Nothing}         # Field-based coloring
+    color::Union{RGB, Symbol, Nothing}       # Manual color
+    categorical::Bool                        # Categorical palette (default: false)
+    clip_percentile::Float64                 # Intensity clipping (default: 0.99)
+    field_range::Union{Tuple{Float64,Float64}, Symbol}  # :auto or explicit
+    field_clip_percentiles::Union{Tuple{Float64,Float64}, Nothing}
+    backend::Symbol                          # :cpu, :cuda, :metal, :auto
+    filename::Union{String, Nothing}         # Save to file
 end
 
 # Render metadata (ecosystem convention)
-struct RenderInfo
+struct RenderInfo <: AbstractSMLMInfo
     # Common fields (ecosystem convention)
     elapsed_s::Float64       # Execution time in seconds
     backend::Symbol          # Compute backend (:cpu, :cuda, :metal)
@@ -193,27 +203,30 @@ end
 
 ### Main Rendering Interface
 
-#### `render(smld, target::Image2DTarget, options::RenderConfig) -> (Matrix{RGB{Float64}}, RenderInfo)`
+#### `render(smld, target::Image2DTarget, config::RenderConfig) -> (Matrix{RGB{Float64}}, RenderInfo)`
 
-Primary rendering interface using explicit configuration structs.
+Primary rendering interface using explicit target and config.
 
 **Arguments:**
 - `smld` - SMLD dataset containing emitters
 - `target::Image2DTarget` - Output image specification (dimensions, pixel size, physical bounds)
-- `options::RenderConfig` - Rendering configuration (strategy, color mapping, backend)
+- `config::RenderConfig` - Flat rendering configuration
 
 **Returns:** `(image, info)` tuple
 
+#### `render(smld, config::RenderConfig) -> (Matrix{RGB{Float64}}, RenderInfo)`
+
+Render using a config struct. Builds target from config fields (`zoom`, `pixel_size`, `roi`, or `target`).
+
 **Example:**
 ```julia
-target = create_target_from_smld(smld, zoom=20)
-options = RenderConfig(GaussianRender(), IntensityColorMapping(:inferno, 0.99))
-(img, info) = render(smld, target, options)
+config = RenderConfig(colormap=:inferno, zoom=20)
+(img, info) = render(smld, config)
 ```
 
 #### `render(smld; kwargs...) -> (Matrix{RGB{Float64}}, RenderInfo)`
 
-Convenience interface using keyword arguments. Constructs target and options internally, then forwards to the primary form.
+Convenience interface. All keyword arguments match `RenderConfig` fields exactly. Constructs a `RenderConfig` and forwards to `render(smld, config)`.
 
 **Resolution (choose one):**
 - `zoom::Real` - Renders exact camera FOV with `camera_pixels × zoom` output
