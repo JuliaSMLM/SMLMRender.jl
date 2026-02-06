@@ -427,7 +427,7 @@ Complete configuration for rendering.
 - `contrast::Union{ContrastOptions, Nothing}`: Contrast enhancement (optional)
 - `backend::Symbol`: Computation backend (:cpu, :cuda, :metal, :auto)
 """
-struct RenderOptions{S<:RenderingStrategy, C<:ColorMapping}
+struct RenderOptions{S<:RenderingStrategy, C<:ColorMapping} <: AbstractSMLMConfig
     strategy::S
     color_mapping::C
     contrast::Union{ContrastOptions, Nothing}
@@ -468,7 +468,7 @@ Metadata from a render operation. Follows ecosystem convention for info structs.
 - `color_mode::Symbol`: Color mapping mode (:intensity, :field, :categorical, :manual, :grayscale)
 - `field_range::Union{Nothing, Tuple{Float64,Float64}}`: Value range for colorbar (field/categorical modes)
 """
-struct RenderInfo
+struct RenderInfo <: AbstractSMLMInfo
     # Common fields (ecosystem convention)
     elapsed_s::Float64
     backend::Symbol

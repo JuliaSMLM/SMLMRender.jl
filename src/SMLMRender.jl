@@ -21,6 +21,7 @@ using ColorSchemes
 using Statistics
 using FileIO
 using ImageIO
+using SMLMData: AbstractSMLMConfig, AbstractSMLMInfo
 
 # Core types
 include("types.jl")
