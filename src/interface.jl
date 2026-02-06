@@ -7,14 +7,14 @@ using Colors
 # ============================================================================
 
 """
-    render(smld, target::Image2DTarget, options::RenderOptions) -> (Matrix{RGB{Float64}}, RenderInfo)
+    render(smld, target::Image2DTarget, options::RenderConfig) -> (Matrix{RGB{Float64}}, RenderInfo)
 
 Primary rendering interface using explicit target and options configuration.
 
 # Arguments
 - `smld`: SMLD dataset containing emitters
 - `target::Image2DTarget`: Output image specification (dimensions, pixel size, physical bounds)
-- `options::RenderOptions`: Rendering configuration (strategy, color mapping, backend)
+- `options::RenderConfig`: Rendering configuration (strategy, color mapping, backend)
 
 # Returns
 Tuple of `(image, info)` where:
@@ -25,7 +25,7 @@ Tuple of `(image, info)` where:
 ```julia
 # Create target and options explicitly
 target = create_target_from_smld(smld, zoom=20)
-options = RenderOptions(GaussianRender(), IntensityColorMapping(:inferno, 0.99))
+options = RenderConfig(GaussianRender(), IntensityColorMapping(:inferno, 0.99))
 
 # Render
 (img, info) = render(smld, target, options)
@@ -33,7 +33,7 @@ options = RenderOptions(GaussianRender(), IntensityColorMapping(:inferno, 0.99))
 
 See also: [`render(smld; kwargs...)`](@ref) for the convenience interface.
 """
-function render(smld, target::Image2DTarget, options::RenderOptions)
+function render(smld, target::Image2DTarget, options::RenderConfig)
     return _render_dispatch(smld, target, options)
 end
 
@@ -134,7 +134,7 @@ function render(smld;
                                             field_clip_percentiles)
 
     # Create render options
-    options = RenderOptions(strategy, color_mapping; backend=backend)
+    options = RenderConfig(strategy, color_mapping; backend=backend)
 
     # Forward to primary form
     (img, info) = render(smld, target, options)
@@ -230,7 +230,7 @@ function render_overlay(smlds::Vector, colors::Vector;
     t_start = time()
     for (smld, color) in zip(smlds, rgb_colors)
         color_mapping = ManualColorMapping(RGB{Float64}(color))
-        options = RenderOptions(strategy, color_mapping; backend=backend)
+        options = RenderConfig(strategy, color_mapping; backend=backend)
         (img, info) = _render_dispatch(smld, target, options)
         push!(images, img)
         total_emitters += info.n_emitters_rendered
@@ -397,7 +397,7 @@ end
 Dispatch to appropriate rendering function based on strategy and color mapping.
 Returns tuple of (image, RenderInfo).
 """
-function _render_dispatch(smld, target::Image2DTarget, options::RenderOptions)
+function _render_dispatch(smld, target::Image2DTarget, options::RenderConfig)
     t_start = time()
 
     # Extract field value range if using field-based coloring (for colorbar metadata)

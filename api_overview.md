@@ -12,7 +12,7 @@ Total exports: 24 (1 function, 18 types, 5 utilities)
 
 **Color Mapping:** `ColorMapping`, `IntensityColorMapping`, `FieldColorMapping`, `ManualColorMapping`, `GrayscaleMapping`, `CategoricalColorMapping`
 
-**Render Configuration:** `RenderTarget`, `Image2DTarget`, `ContrastMethod`, `ContrastOptions`, `RenderOptions`, `RenderInfo`, `RenderResult2D` (deprecated)
+**Render Configuration:** `RenderTarget`, `Image2DTarget`, `ContrastMethod`, `ContrastOptions`, `RenderConfig`, `RenderInfo`, `RenderResult2D` (deprecated)
 
 **Utilities:** `create_target_from_smld`, `list_recommended_colormaps`, `save_image`, `export_colorbar`
 
@@ -162,7 +162,7 @@ struct ContrastOptions
 end
 
 # Complete rendering configuration
-struct RenderOptions{S<:RenderingStrategy, C<:ColorMapping}
+struct RenderConfig{S<:RenderingStrategy, C<:ColorMapping}
     strategy::S
     color_mapping::C
     contrast::Union{ContrastOptions, Nothing}
@@ -193,21 +193,21 @@ end
 
 ### Main Rendering Interface
 
-#### `render(smld, target::Image2DTarget, options::RenderOptions) -> (Matrix{RGB{Float64}}, RenderInfo)`
+#### `render(smld, target::Image2DTarget, options::RenderConfig) -> (Matrix{RGB{Float64}}, RenderInfo)`
 
 Primary rendering interface using explicit configuration structs.
 
 **Arguments:**
 - `smld` - SMLD dataset containing emitters
 - `target::Image2DTarget` - Output image specification (dimensions, pixel size, physical bounds)
-- `options::RenderOptions` - Rendering configuration (strategy, color mapping, backend)
+- `options::RenderConfig` - Rendering configuration (strategy, color mapping, backend)
 
 **Returns:** `(image, info)` tuple
 
 **Example:**
 ```julia
 target = create_target_from_smld(smld, zoom=20)
-options = RenderOptions(GaussianRender(), IntensityColorMapping(:inferno, 0.99))
+options = RenderConfig(GaussianRender(), IntensityColorMapping(:inferno, 0.99))
 (img, info) = render(smld, target, options)
 ```
 

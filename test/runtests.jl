@@ -168,7 +168,7 @@ end
 
         # Create target and options explicitly
         target = create_target_from_smld(smld, zoom=5)
-        options = RenderOptions(GaussianRender(), IntensityColorMapping(:inferno, 0.99))
+        options = RenderConfig(GaussianRender(), IntensityColorMapping(:inferno, 0.99))
 
         # Test primary form
         result = render(smld, target, options)

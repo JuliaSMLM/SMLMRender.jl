@@ -417,7 +417,7 @@ ContrastOptions(method::ContrastMethod) = ContrastOptions(method, 0.999, 1.0)
 # ============================================================================
 
 """
-    RenderOptions{S<:RenderingStrategy, C<:ColorMapping}
+    RenderConfig{S<:RenderingStrategy, C<:ColorMapping}
 
 Complete configuration for rendering.
 
@@ -427,13 +427,13 @@ Complete configuration for rendering.
 - `contrast::Union{ContrastOptions, Nothing}`: Contrast enhancement (optional)
 - `backend::Symbol`: Computation backend (:cpu, :cuda, :metal, :auto)
 """
-struct RenderOptions{S<:RenderingStrategy, C<:ColorMapping} <: AbstractSMLMConfig
+struct RenderConfig{S<:RenderingStrategy, C<:ColorMapping} <: AbstractSMLMConfig
     strategy::S
     color_mapping::C
     contrast::Union{ContrastOptions, Nothing}
     backend::Symbol
 
-    function RenderOptions(strategy::S, color_mapping::C,
+    function RenderConfig(strategy::S, color_mapping::C,
                           contrast::Union{ContrastOptions, Nothing},
                           backend::Symbol) where {S,C}
         @assert backend in (:cpu, :cuda, :metal, :auto) "Invalid backend"
@@ -442,9 +442,9 @@ struct RenderOptions{S<:RenderingStrategy, C<:ColorMapping} <: AbstractSMLMConfi
 end
 
 # Convenience constructor
-RenderOptions(strategy::RenderingStrategy, color_mapping::ColorMapping;
+RenderConfig(strategy::RenderingStrategy, color_mapping::ColorMapping;
               contrast=nothing, backend=:cpu) =
-    RenderOptions(strategy, color_mapping, contrast, backend)
+    RenderConfig(strategy, color_mapping, contrast, backend)
 
 # ============================================================================
 # Results
@@ -518,21 +518,21 @@ Result of a 2D rendering operation.
 # Fields
 - `image::Matrix{T}`: Rendered image (T can be RGB, Float64, etc.)
 - `target::Image2DTarget`: Render target specification
-- `options::RenderOptions`: Rendering options used
+- `options::RenderConfig`: Rendering options used
 - `render_time::Float64`: Render time in seconds
 - `n_localizations::Int`: Number of localizations rendered
 """
 struct RenderResult2D{T}
     image::Matrix{T}
     target::Image2DTarget
-    options::RenderOptions
+    options::RenderConfig
     render_time::Float64
     n_localizations::Int
     field_value_range::Union{Tuple{Float64, Float64}, Nothing}  # Actual field range used (for colorbar)
 end
 
 # Conversion constructor: build deprecated RenderResult2D from new tuple pattern
-function RenderResult2D(image::Matrix{T}, info::RenderInfo, target::Image2DTarget, options::RenderOptions) where T
+function RenderResult2D(image::Matrix{T}, info::RenderInfo, target::Image2DTarget, options::RenderConfig) where T
     Base.depwarn(
         "RenderResult2D is deprecated. Use tuple unpacking: `(img, info) = render(smld; ...)`",
         :RenderResult2D

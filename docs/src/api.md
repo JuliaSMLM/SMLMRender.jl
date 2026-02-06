@@ -49,7 +49,7 @@ ContrastOptions
 ## Configuration and Results
 
 ```@docs
-RenderOptions
+RenderConfig
 RenderResult2D
 ```
 
