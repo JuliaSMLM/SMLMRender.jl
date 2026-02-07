@@ -124,6 +124,58 @@ CircleRender(; radius_factor=2.0, line_width=1.0,
              use_localization_precision=true, fixed_radius=nothing) =
     CircleRender(radius_factor, line_width, use_localization_precision, fixed_radius)
 
+"""
+    EllipseRender <: Render2DStrategy
+
+Renders each localization as an ellipse outline. Uses separate σ_x, σ_y
+for axis radii, and σ_xy (covariance) for rotation when available.
+
+# Fields
+- `radius_factor::Float64`: Multiply sigma by this (1.0=1σ, 2.0=2σ)
+- `line_width::Float64`: Outline width in pixels (default: 1.0)
+- `use_localization_precision::Bool`: Use σ_x, σ_y from data or fixed radii
+- `fixed_radius_x::Union{Float64, Nothing}`: Fixed x-radius in nm
+- `fixed_radius_y::Union{Float64, Nothing}`: Fixed y-radius in nm
+
+# Examples
+```julia
+# 2σ ellipses using localization precision
+strategy = EllipseRender(2.0, 1.0, true, nothing, nothing)
+
+# Fixed 30nm x 20nm ellipses
+strategy = EllipseRender(1.0, 1.5, false, 30.0, 20.0)
+```
+"""
+struct EllipseRender <: Render2DStrategy
+    radius_factor::Float64
+    line_width::Float64
+    use_localization_precision::Bool
+    fixed_radius_x::Union{Float64, Nothing}
+    fixed_radius_y::Union{Float64, Nothing}
+
+    function EllipseRender(radius_factor::Real, line_width::Real,
+                          use_precision::Bool,
+                          fixed_radius_x::Union{Real, Nothing},
+                          fixed_radius_y::Union{Real, Nothing})
+        @assert radius_factor > 0 "radius_factor must be positive"
+        @assert line_width > 0 "line_width must be positive"
+        if !use_precision
+            @assert fixed_radius_x !== nothing && fixed_radius_x > 0 "fixed_radius_x must be positive when not using localization precision"
+            @assert fixed_radius_y !== nothing && fixed_radius_y > 0 "fixed_radius_y must be positive when not using localization precision"
+        end
+        new(Float64(radius_factor), Float64(line_width), use_precision,
+            fixed_radius_x === nothing ? nothing : Float64(fixed_radius_x),
+            fixed_radius_y === nothing ? nothing : Float64(fixed_radius_y))
+    end
+end
+
+# Convenience constructor
+EllipseRender(; radius_factor=2.0, line_width=1.0,
+              use_localization_precision=true,
+              fixed_radius_x=nothing, fixed_radius_y=nothing) =
+    EllipseRender(radius_factor, line_width, use_localization_precision,
+                  fixed_radius_x, fixed_radius_y)
+
 # ============================================================================
 # Color Mapping
 # ============================================================================
@@ -142,11 +194,11 @@ Accumulate grayscale intensity, then apply colormap. Traditional SMLM rendering.
 
 # Fields
 - `colormap::Symbol`: ColorSchemes.jl colormap name (e.g., :inferno, :viridis)
-- `clip_percentile::Float64`: Clip intensity before mapping (0.999 = top 0.1%)
+- `clip_percentile::Float64`: Clip intensity before mapping (0.99 = top 1%)
 
 # Examples
 ```julia
-color_mapping = IntensityColorMapping(:inferno, 0.999)
+color_mapping = IntensityColorMapping(:inferno, 0.99)
 img = render(smld; color_mapping=color_mapping)
 ```
 """
@@ -160,7 +212,7 @@ struct IntensityColorMapping <: ColorMapping
     end
 end
 
-IntensityColorMapping(colormap::Symbol) = IntensityColorMapping(colormap, 0.999)
+IntensityColorMapping(colormap::Symbol) = IntensityColorMapping(colormap, 0.99)
 
 """
     FieldColorMapping <: ColorMapping
@@ -231,6 +283,47 @@ end
 No colormap applied. Returns grayscale image.
 """
 struct GrayscaleMapping <: ColorMapping end
+
+"""
+    CategoricalColorMapping <: ColorMapping
+
+Color localizations by integer field using categorical palette. Colors cycle
+when values exceed palette size. Ideal for cluster IDs, molecule IDs, etc.
+
+# Fields
+- `field::Symbol`: Integer field name (:id, :cluster_id, :molecule, etc.)
+- `palette::Symbol`: ColorSchemes.jl categorical palette (:tab10, :Set1, :Dark2, etc.)
+
+# Recommended Palettes
+- `:tab10` - 10 distinct colors (most popular, Matplotlib default)
+- `:Set1_9` - 9 high-saturation colors (ColorBrewer)
+- `:Set2_8` - 8 pastel colors
+- `:Set3_12` - 12 colors
+- `:tab20` - 20 colors (10 pairs)
+- `:tab20b` - 20 colors (alternative)
+- `:tab20c` - 20 colors (alternative)
+
+# Examples
+```julia
+# Color by cluster ID
+render(smld, color_by=:id, categorical=true, zoom=20)
+
+# Custom palette
+render(smld, color_by=:id, colormap=:Set1_9, categorical=true, zoom=20)
+
+# Direct mapping
+color_mapping = CategoricalColorMapping(:id, :tab10)
+render(smld; color_mapping=color_mapping, zoom=20)
+```
+"""
+struct CategoricalColorMapping <: ColorMapping
+    field::Symbol
+    palette::Symbol
+
+    function CategoricalColorMapping(field::Symbol, palette::Symbol=:tab10)
+        new(field, palette)
+    end
+end
 
 # ============================================================================
 # Render Targets (What we're rendering to)
@@ -320,60 +413,179 @@ end
 ContrastOptions(method::ContrastMethod) = ContrastOptions(method, 0.999, 1.0)
 
 # ============================================================================
-# Render Options (Comprehensive Configuration)
+# Render Configuration (Flat — fields match render() kwargs exactly)
 # ============================================================================
 
 """
-    RenderOptions{S<:RenderingStrategy, C<:ColorMapping}
+    RenderConfig <: AbstractSMLMConfig
 
-Complete configuration for rendering.
+Flat rendering configuration. Fields correspond 1:1 with `render()` keyword arguments.
 
 # Fields
-- `strategy::S`: Rendering algorithm (Histogram, Gaussian, Circle)
-- `color_mapping::C`: Color mapping strategy
-- `contrast::Union{ContrastOptions, Nothing}`: Contrast enhancement (optional)
-- `backend::Symbol`: Computation backend (:cpu, :cuda, :metal, :auto)
+- `strategy::RenderingStrategy`: Rendering algorithm (default: `GaussianRender()`)
+- `pixel_size::Union{Float64, Nothing}`: Pixel size in nm (data bounds mode)
+- `zoom::Union{Float64, Nothing}`: Zoom factor (camera FOV mode)
+- `roi::Union{Tuple, Nothing}`: Camera pixel ROI as `(x_range, y_range)`
+- `target::Union{Image2DTarget, Nothing}`: Explicit target specification
+- `colormap::Union{Symbol, Nothing}`: Intensity-based colormap (`:inferno`, `:viridis`, etc.)
+- `color_by::Union{Symbol, Nothing}`: Field for field-based coloring (`:z`, `:photons`, etc.)
+- `color::Union{RGB, Symbol, Nothing}`: Manual color
+- `categorical::Bool`: Use categorical palette for integer fields (default: `false`)
+- `clip_percentile::Float64`: Intensity clipping percentile (default: `0.99`)
+- `field_range::Union{Tuple{Float64,Float64}, Symbol}`: Value range or `:auto`
+- `field_clip_percentiles::Union{Tuple{Float64,Float64}, Nothing}`: Percentile clipping
+- `backend::Symbol`: Computation backend (default: `:cpu`)
+- `filename::Union{String, Nothing}`: Save to file if provided
 """
-struct RenderOptions{S<:RenderingStrategy, C<:ColorMapping}
-    strategy::S
-    color_mapping::C
-    contrast::Union{ContrastOptions, Nothing}
+struct RenderConfig <: AbstractSMLMConfig
+    strategy::RenderingStrategy
+    pixel_size::Union{Float64, Nothing}
+    zoom::Union{Float64, Nothing}
+    roi::Union{Tuple, Nothing}
+    target::Union{Image2DTarget, Nothing}
+    colormap::Union{Symbol, Nothing}
+    color_by::Union{Symbol, Nothing}
+    color::Union{RGB, Symbol, Nothing}
+    categorical::Bool
+    clip_percentile::Float64
+    field_range::Union{Tuple{Float64, Float64}, Symbol}
+    field_clip_percentiles::Union{Tuple{Float64, Float64}, Nothing}
     backend::Symbol
-
-    function RenderOptions(strategy::S, color_mapping::C,
-                          contrast::Union{ContrastOptions, Nothing},
-                          backend::Symbol) where {S,C}
-        @assert backend in (:cpu, :cuda, :metal, :auto) "Invalid backend"
-        new{S,C}(strategy, color_mapping, contrast, backend)
-    end
+    filename::Union{String, Nothing}
 end
 
-# Convenience constructor
-RenderOptions(strategy::RenderingStrategy, color_mapping::ColorMapping;
-              contrast=nothing, backend=:cpu) =
-    RenderOptions(strategy, color_mapping, contrast, backend)
+function RenderConfig(;
+    strategy::RenderingStrategy = GaussianRender(),
+    pixel_size::Union{Real, Nothing} = nothing,
+    zoom::Union{Real, Nothing} = nothing,
+    roi::Union{Tuple, Nothing} = nothing,
+    target::Union{Image2DTarget, Nothing} = nothing,
+    colormap::Union{Symbol, Nothing} = nothing,
+    color_by::Union{Symbol, Nothing} = nothing,
+    color::Union{RGB, Symbol, Nothing} = nothing,
+    categorical::Bool = false,
+    clip_percentile::Real = 0.99,
+    field_range::Union{Tuple{Real, Real}, Symbol} = :auto,
+    field_clip_percentiles::Union{Tuple{Real, Real}, Nothing} = (0.01, 0.99),
+    backend::Symbol = :cpu,
+    filename::Union{String, Nothing} = nothing)
+
+    RenderConfig(
+        strategy,
+        pixel_size === nothing ? nothing : Float64(pixel_size),
+        zoom === nothing ? nothing : Float64(zoom),
+        roi,
+        target,
+        colormap,
+        color_by,
+        color,
+        categorical,
+        Float64(clip_percentile),
+        field_range isa Tuple ? (Float64(field_range[1]), Float64(field_range[2])) : field_range,
+        field_clip_percentiles === nothing ? nothing :
+            (Float64(field_clip_percentiles[1]), Float64(field_clip_percentiles[2])),
+        backend,
+        filename
+    )
+end
 
 # ============================================================================
 # Results
 # ============================================================================
 
 """
+    RenderInfo
+
+Metadata from a render operation. Follows ecosystem convention for info structs.
+
+# Common fields (ecosystem convention)
+- `elapsed_s::Float64`: Execution time in seconds
+- `backend::Symbol`: Compute backend used (:cpu, :cuda, :metal)
+- `device_id::Int`: Device identifier (0 for CPU)
+
+# Render-specific fields
+- `n_emitters_rendered::Int`: Number of emitters actually rendered
+- `output_size::Tuple{Int,Int}`: (height, width) of output image
+- `pixel_size_nm::Float64`: Output pixel size in nanometers
+- `strategy::Symbol`: Rendering strategy used (:gaussian, :histogram, :circle, :ellipse)
+- `color_mode::Symbol`: Color mapping mode (:intensity, :field, :categorical, :manual, :grayscale)
+- `field_range::Union{Nothing, Tuple{Float64,Float64}}`: Value range for colorbar (field/categorical modes)
+"""
+struct RenderInfo <: AbstractSMLMInfo
+    # Common fields (ecosystem convention)
+    elapsed_s::Float64
+    backend::Symbol
+    device_id::Int
+
+    # Render-specific fields
+    n_emitters_rendered::Int
+    output_size::Tuple{Int,Int}
+    pixel_size_nm::Float64
+    strategy::Symbol
+    color_mode::Symbol
+    field_range::Union{Nothing, Tuple{Float64,Float64}}
+end
+
+# Helper constructor for building RenderInfo from render context
+function RenderInfo(;
+    elapsed_s::Float64,
+    backend::Symbol,
+    device_id::Int = 0,
+    n_emitters_rendered::Int,
+    output_size::Tuple{Int,Int},
+    pixel_size_nm::Float64,
+    strategy::Symbol,
+    color_mode::Symbol,
+    field_range::Union{Nothing, Tuple{Float64,Float64}} = nothing
+)
+    RenderInfo(elapsed_s, backend, device_id, n_emitters_rendered,
+               output_size, pixel_size_nm, strategy, color_mode, field_range)
+end
+
+"""
     RenderResult2D{T}
+
+!!! warning "Deprecated"
+    `RenderResult2D` is deprecated. Use the tuple return pattern instead:
+    ```julia
+    # Old API (deprecated)
+    result = render(smld, zoom=20)
+    img = result.image
+
+    # New API
+    (img, info) = render(smld, zoom=20)
+    ```
 
 Result of a 2D rendering operation.
 
 # Fields
 - `image::Matrix{T}`: Rendered image (T can be RGB, Float64, etc.)
 - `target::Image2DTarget`: Render target specification
-- `options::RenderOptions`: Rendering options used
+- `options::RenderConfig`: Rendering options used
 - `render_time::Float64`: Render time in seconds
 - `n_localizations::Int`: Number of localizations rendered
 """
 struct RenderResult2D{T}
     image::Matrix{T}
     target::Image2DTarget
-    options::RenderOptions
+    options::RenderConfig
     render_time::Float64
     n_localizations::Int
     field_value_range::Union{Tuple{Float64, Float64}, Nothing}  # Actual field range used (for colorbar)
+end
+
+# Conversion constructor: build deprecated RenderResult2D from new tuple pattern
+function RenderResult2D(image::Matrix{T}, info::RenderInfo, target::Image2DTarget, options::RenderConfig) where T
+    Base.depwarn(
+        "RenderResult2D is deprecated. Use tuple unpacking: `(img, info) = render(smld; ...)`",
+        :RenderResult2D
+    )
+    RenderResult2D{T}(
+        image,
+        target,
+        options,
+        info.elapsed_s,
+        info.n_emitters_rendered,
+        info.field_range
+    )
 end

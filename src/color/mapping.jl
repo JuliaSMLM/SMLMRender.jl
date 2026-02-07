@@ -52,7 +52,8 @@ function apply_intensity_colormap(intensity::Matrix{Float64}, mapping::Intensity
 end
 
 """
-    get_field_color(emitter, mapping::FieldColorMapping, value_range::Tuple{Float64, Float64})
+    get_field_color(emitter, mapping::FieldColorMapping, value_range::Tuple{Float64, Float64};
+                   frame_offsets=nothing)
 
 Get RGB color for a single emitter based on its field value.
 
@@ -60,13 +61,15 @@ Get RGB color for a single emitter based on its field value.
 - `emitter`: Emitter object (must have the specified field)
 - `mapping`: FieldColorMapping specification
 - `value_range`: (min_val, max_val) for normalization
+- `frame_offsets`: Required when `mapping.field === :absolute_frame`
 
 Returns RGB{Float64}
 """
 function get_field_color(emitter, mapping::FieldColorMapping,
-                        value_range::Tuple{Float64, Float64})
-    # Get field value
-    value = getfield(emitter, mapping.field)
+                        value_range::Tuple{Float64, Float64};
+                        frame_offsets=nothing)
+    # Get field value (handles computed fields like :absolute_frame)
+    value = get_field_value(emitter, mapping.field; frame_offsets=frame_offsets)
 
     # Normalize to [0, 1]
     min_val, max_val = value_range
@@ -97,8 +100,10 @@ function get_emitter_color(emitter, mapping::ManualColorMapping; value_range=not
     return mapping.color
 end
 
-function get_emitter_color(emitter, mapping::FieldColorMapping; value_range::Tuple{Float64, Float64})
-    return get_field_color(emitter, mapping, value_range)
+function get_emitter_color(emitter, mapping::FieldColorMapping;
+                          value_range::Tuple{Float64, Float64},
+                          frame_offsets=nothing)
+    return get_field_color(emitter, mapping, value_range; frame_offsets=frame_offsets)
 end
 
 function get_emitter_color(emitter, mapping::IntensityColorMapping; value_range=nothing)
@@ -107,8 +112,29 @@ function get_emitter_color(emitter, mapping::IntensityColorMapping; value_range=
     return RGB{Float64}(1.0, 1.0, 1.0)
 end
 
-function get_emitter_color(emitter, mapping::GrayscaleMapping; value_range=nothing)
+function get_emitter_color(emitter, mapping::GrayscaleMapping; value_range=nothing, kwargs...)
     return RGB{Float64}(1.0, 1.0, 1.0)
+end
+
+"""
+    get_emitter_color(emitter, mapping::CategoricalColorMapping; kwargs...)
+
+Get categorical color for emitter based on integer field value.
+Uses modular indexing into palette - colors cycle for values > palette size.
+"""
+function get_emitter_color(emitter, mapping::CategoricalColorMapping; kwargs...)
+    # Get integer field value
+    value = getfield(emitter, mapping.field)
+    int_value = round(Int, value)
+
+    # Get palette
+    palette = get_colormap(mapping.palette)
+    n_colors = length(palette)
+
+    # Modular index (1-based)
+    idx = mod1(int_value, n_colors)
+
+    return RGB{Float64}(palette[idx])
 end
 
 """
@@ -116,13 +142,22 @@ end
 
 Calculate the value range for field-based color mapping.
 
-Handles :auto range and percentile clipping.
+Handles `:auto` range and percentile clipping. Also computes `frame_offsets`
+when `mapping.field === :absolute_frame`.
+
+Returns `(value_range, frame_offsets)` where `frame_offsets` is `nothing`
+for regular fields or a `Dict{Int,Int}` for `:absolute_frame`.
 """
 function prepare_field_range(smld, mapping::FieldColorMapping)
+    # Compute frame_offsets if needed
+    frame_offsets = mapping.field === :absolute_frame ? compute_frame_offsets(smld) : nothing
+
     if mapping.range isa Tuple
-        return mapping.range
+        return (mapping.range, frame_offsets)
     else  # :auto
-        return calculate_field_range(smld, mapping.field, mapping.clip_percentiles)
+        range = calculate_field_range(smld, mapping.field, mapping.clip_percentiles;
+                                     frame_offsets=frame_offsets)
+        return (range, frame_offsets)
     end
 end
 
@@ -196,7 +231,8 @@ function list_recommended_colormaps()
         :sequential => [:viridis, :cividis, :inferno, :magma, :plasma, :turbo, :hot],
         :diverging => [:RdBu, :seismic, :coolwarm],
         :cyclic => [:twilight, :phase],
-        :perceptual => [:viridis, :cividis, :inferno, :magma, :plasma]
+        :perceptual => [:viridis, :cividis, :inferno, :magma, :plasma],
+        :categorical => [:tab10, :Set1_9, :Set2_8, :Set3_12, :tab20, :tab20b, :tab20c]
     )
 end
 

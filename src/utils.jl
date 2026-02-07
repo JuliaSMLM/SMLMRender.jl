@@ -5,6 +5,75 @@ using ColorSchemes
 import FileIO  # For save_image function
 import CairoMakie  # For export_colorbar function
 
+# ============================================================================
+# Frame offset computation for absolute_frame support
+# ============================================================================
+
+"""
+    compute_frame_offsets(smld)
+
+Compute cumulative frame offsets per dataset for absolute frame calculation.
+
+When rendering multiple datasets where each dataset's `frame` starts at 1,
+this computes offsets so `absolute_frame = frame + offset[dataset]` gives
+a continuous frame number across all datasets.
+
+Returns `Dict{Int, Int}` mapping `dataset_id => frame_offset`.
+
+# Example
+```julia
+# Dataset 1: frames 1-100, Dataset 2: frames 1-50
+offsets = compute_frame_offsets(smld)  # {1 => 0, 2 => 100}
+# Emitter in dataset 2, frame 25 → absolute_frame = 25 + 100 = 125
+```
+"""
+function compute_frame_offsets(smld)
+    # Find max frame per dataset
+    max_frames = Dict{Int, Int}()
+    for e in smld.emitters
+        ds = e.dataset
+        max_frames[ds] = max(get(max_frames, ds, 0), e.frame)
+    end
+
+    # Compute cumulative offsets (sorted by dataset id)
+    datasets = sort(collect(keys(max_frames)))
+    offsets = Dict{Int, Int}()
+    cumulative = 0
+    for ds in datasets
+        offsets[ds] = cumulative
+        cumulative += max_frames[ds]
+    end
+    return offsets
+end
+
+"""
+    get_field_value(emitter, field::Symbol; frame_offsets=nothing)
+
+Get field value from emitter, handling computed fields like `:absolute_frame`.
+
+# Arguments
+- `emitter`: Emitter object
+- `field`: Field name (`:z`, `:photons`, `:frame`, `:absolute_frame`, etc.)
+- `frame_offsets`: Required when `field === :absolute_frame`, from `compute_frame_offsets()`
+
+# Example
+```julia
+offsets = compute_frame_offsets(smld)
+abs_frame = get_field_value(emitter, :absolute_frame; frame_offsets=offsets)
+photons = get_field_value(emitter, :photons)
+```
+"""
+function get_field_value(emitter, field::Symbol; frame_offsets=nothing)
+    if field === :absolute_frame
+        if frame_offsets === nothing
+            error(":absolute_frame requires frame_offsets to be precomputed via compute_frame_offsets()")
+        end
+        return emitter.frame + frame_offsets[emitter.dataset]
+    else
+        return getfield(emitter, field)
+    end
+end
+
 """
     physical_to_pixel(x_phys, y_phys, target::Image2DTarget)
 
@@ -54,7 +123,7 @@ function in_bounds(i::Int, j::Int, target::Image2DTarget)
 end
 
 """
-    create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, margin=0.05)
+    create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, roi=nothing, margin=0.05)
 
 Create an Image2DTarget for rendering.
 
@@ -66,14 +135,17 @@ uses data bounds with margin.
 - `smld`: SMLD dataset (must have .emitters field)
 - `pixel_size`: Pixel size in nm (uses data bounds + margin)
 - `zoom`: Zoom factor - renders exact camera FOV with camera_pixels × zoom output
+- `roi`: Camera pixel ROI as `(x_range, y_range)`. Use `:` for full range.
+  Example: `roi=(430:860, 1:256)` or `roi=(430:860, :)` for full y.
+  Only used with `zoom` mode.
 - `margin`: Fractional margin for data bounds mode (default: 5%)
 
 Either `pixel_size` or `zoom` must be specified.
 """
-function create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, margin=0.05)
+function create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, roi=nothing, margin=0.05)
     @assert pixel_size !== nothing || zoom !== nothing "Must specify either pixel_size or zoom"
 
-    # Mode 1: zoom specified - use EXACT camera FOV
+    # Mode 1: zoom specified - use EXACT camera FOV (or ROI subset)
     if zoom !== nothing
         @assert hasfield(typeof(smld), :camera) "zoom requires smld.camera"
 
@@ -81,17 +153,30 @@ function create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, margin=
         camera_pixel_size = get_camera_pixel_size(camera)  # nm
         pixel_size = camera_pixel_size / zoom
 
-        # Use exact camera FOV
-        x_min = camera.pixel_edges_x[1]
-        x_max = camera.pixel_edges_x[end]
-        y_min = camera.pixel_edges_y[1]
-        y_max = camera.pixel_edges_y[end]
-
-        # Exact dimensions: n_camera_pixels × zoom
+        # Determine pixel ranges (handle roi parameter)
         n_camera_px_x = length(camera.pixel_edges_x) - 1
         n_camera_px_y = length(camera.pixel_edges_y) - 1
-        width = n_camera_px_x * zoom
-        height = n_camera_px_y * zoom
+
+        if roi === nothing
+            # Full camera FOV
+            x_range = 1:n_camera_px_x
+            y_range = 1:n_camera_px_y
+        else
+            # ROI specified - handle Colon for full range
+            x_range = roi[1] isa Colon ? (1:n_camera_px_x) : roi[1]
+            y_range = roi[2] isa Colon ? (1:n_camera_px_y) : roi[2]
+        end
+
+        # Get physical bounds from camera pixel edges
+        # pixel_edges_x[i] is the left edge of pixel i, pixel_edges_x[i+1] is right edge
+        x_min = camera.pixel_edges_x[first(x_range)]
+        x_max = camera.pixel_edges_x[last(x_range) + 1]
+        y_min = camera.pixel_edges_y[first(y_range)]
+        y_max = camera.pixel_edges_y[last(y_range) + 1]
+
+        # Output dimensions: roi_pixels × zoom
+        width = round(Int, length(x_range) * zoom)
+        height = round(Int, length(y_range) * zoom)
 
     # Mode 2: pixel_size specified - use data bounds + margin
     else
@@ -134,19 +219,25 @@ function get_camera_pixel_size(camera)
 end
 
 """
-    calculate_field_range(smld, field::Symbol, clip_percentiles)
+    calculate_field_range(smld, field::Symbol, clip_percentiles; frame_offsets=nothing)
 
 Calculate range of field values, optionally with percentile clipping.
 
 # Arguments
 - `smld`: SMLD dataset
-- `field`: Field name (:z, :photons, etc.)
-- `clip_percentiles`: Tuple (low, high) for percentile clipping, or nothing
+- `field`: Field name (`:z`, `:photons`, `:absolute_frame`, etc.)
+- `clip_percentiles`: Tuple `(low, high)` for percentile clipping, or `nothing`
+- `frame_offsets`: Required when `field === :absolute_frame`
 
-Returns (min_val, max_val)
+Returns `(min_val, max_val)`
 """
-function calculate_field_range(smld, field::Symbol, clip_percentiles)
-    values = [getfield(e, field) for e in smld.emitters]
+function calculate_field_range(smld, field::Symbol, clip_percentiles; frame_offsets=nothing)
+    # Precompute frame offsets if needed and not provided
+    if field === :absolute_frame && frame_offsets === nothing
+        frame_offsets = compute_frame_offsets(smld)
+    end
+
+    values = [get_field_value(e, field; frame_offsets=frame_offsets) for e in smld.emitters]
 
     if clip_percentiles === nothing
         return extrema(values)
@@ -161,7 +252,11 @@ end
 """
     clip_at_percentile(img::Matrix{T}, percentile::Real) where T<:Real
 
-Clip image values at specified percentile.
+Clip image values at specified percentile of NON-ZERO pixels.
+
+For sparse SMLM data, most pixels are zero/background. Computing percentiles
+on all pixels would give misleading results. This function computes the
+percentile only on pixels with signal (value > 0).
 
 Returns the clipping value used.
 """
@@ -170,7 +265,13 @@ function clip_at_percentile(img::Matrix{T}, percentile::Real) where T<:Real
         return maximum(img)
     end
 
-    clip_val = quantile(vec(img), percentile)
+    # Use only non-zero pixels for percentile calculation
+    nonzero = filter(x -> x > 0, vec(img))
+    if isempty(nonzero)
+        return zero(T)
+    end
+
+    clip_val = quantile(nonzero, percentile)
     img .= min.(img, clip_val)
     return clip_val
 end
@@ -256,36 +357,42 @@ end
 
 Draw an anti-aliased point at continuous coordinates (x, y).
 
-Uses bilinear interpolation for sub-pixel rendering.
+Primary pixel gets full intensity, neighbors get AA fringe for smooth edges.
 """
 function draw_antialiased_point!(img::Matrix{RGB{Float64}}, x::Real, y::Real,
                                  color::RGB{Float64}, thickness::Real)
-    # Get integer pixel coordinates
-    i0 = floor(Int, y)
-    j0 = floor(Int, x)
+    # Get nearest pixel coordinates
+    i0 = round(Int, y)
+    j0 = round(Int, x)
 
-    # Sub-pixel offsets
-    fy = y - i0
-    fx = x - j0
-
-    # Bilinear weights
-    weights = [
-        (1 - fx) * (1 - fy),  # Top-left
-        fx * (1 - fy),        # Top-right
-        (1 - fx) * fy,        # Bottom-left
-        fx * fy               # Bottom-right
-    ]
-
-    offsets = [(0, 0), (0, 1), (1, 0), (1, 1)]
-
-    # Apply thickness scaling
     thickness_factor = min(1.0, thickness)
 
-    for (w, (di, dj)) in zip(weights, offsets)
-        i = i0 + di
-        j = j0 + dj
-        if 1 <= i <= size(img, 1) && 1 <= j <= size(img, 2)
-            img[i, j] += color * w * thickness_factor
+    # Primary pixel gets full intensity
+    if 1 <= i0 <= size(img, 1) && 1 <= j0 <= size(img, 2)
+        img[i0, j0] += color * thickness_factor
+    end
+
+    # AA fringe to neighbors based on sub-pixel position
+    # Distance from point to pixel center determines fringe intensity
+    fy = y - i0  # ranges from -0.5 to 0.5
+    fx = x - j0
+
+    # Add small contribution to neighbors for anti-aliasing
+    aa_strength = 0.3 * thickness_factor  # fringe intensity
+
+    # Horizontal neighbors
+    if abs(fx) > 0.1
+        j_neighbor = fx > 0 ? j0 + 1 : j0 - 1
+        if 1 <= i0 <= size(img, 1) && 1 <= j_neighbor <= size(img, 2)
+            img[i0, j_neighbor] += color * aa_strength * abs(fx)
+        end
+    end
+
+    # Vertical neighbors
+    if abs(fy) > 0.1
+        i_neighbor = fy > 0 ? i0 + 1 : i0 - 1
+        if 1 <= i_neighbor <= size(img, 1) && 1 <= j0 <= size(img, 2)
+            img[i_neighbor, j0] += color * aa_strength * abs(fy)
         end
     end
 end

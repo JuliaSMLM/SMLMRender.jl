@@ -48,6 +48,11 @@ Two modes for specifying output resolution:
   - Useful for cropping to regions of interest
   - Specify in nm (e.g., `pixel_size=10.0`)
 
+- **`roi`**: Region of interest (zoom mode only)
+  - Render a subset of the camera FOV
+  - Specify camera pixel ranges: `roi=(x_range, y_range)`
+  - Use `:` for full range on an axis: `roi=(430:860, :)`
+
 ## Installation
 
 ```julia
@@ -94,8 +99,8 @@ hist_result = render(smld, strategy=HistogramRender(), zoom=10)
 # Gaussian: Smooth blobs
 gauss_result = render(smld, strategy=GaussianRender(), zoom=10)
 
-# Circle: Visualize localization precision
-circle_result = render(smld, strategy=CircleRender(), zoom=20)
+# Circle: Visualize localization precision (requires color_by or color)
+circle_result = render(smld, strategy=CircleRender(), color_by=:frame, zoom=20)
 
 println("Histogram: $(size(hist_result.image))")
 println("Gaussian: $(size(gauss_result.image))")

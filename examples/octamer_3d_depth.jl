@@ -133,15 +133,14 @@ println("    ✓ $(round(t5*1000, digits=1)) ms")
 println("\n  • Exporting colorbars for z-depth...")
 
 # Export colorbar for turbo (high contrast)
-result_turbo = render(smld_noisy_3d,
+(img_turbo, info_turbo) = render(smld_noisy_3d,
     strategy = GaussianRender(),
     color_by = :z,
     colormap = :turbo,
-    zoom = zoom,
-    output_type = :result  # Get full result with metadata
+    zoom = zoom
 )
 
-export_colorbar(result_turbo,
+export_colorbar(:turbo, info_turbo.field_range, "Z-depth (μm)",
     joinpath(output_dir, "colorbar_z_turbo.png"),
     orientation = :vertical,
     size = (100, 400)

@@ -2,10 +2,74 @@
 
 using Colors
 
+# ============================================================================
+# Primary form: render(smld, target, config)
+# ============================================================================
+
+"""
+    render(smld, target::Image2DTarget, config::RenderConfig) -> (Matrix{RGB{Float64}}, RenderInfo)
+
+Primary rendering interface using explicit target and config.
+
+# Arguments
+- `smld`: SMLD dataset containing emitters
+- `target::Image2DTarget`: Output image specification (dimensions, pixel size, physical bounds)
+- `config::RenderConfig`: Rendering configuration
+
+# Returns
+Tuple of `(image, info)` where:
+- `image::Matrix{RGB{Float64}}`: Rendered image
+- `info::RenderInfo`: Metadata including timing, dimensions, and color range
+
+# Example
+```julia
+target = create_target_from_smld(smld, zoom=20)
+config = RenderConfig(colormap=:inferno)
+(img, info) = render(smld, target, config)
+```
+
+See also: [`render(smld; kwargs...)`](@ref) for the convenience interface.
+"""
+function render(smld, target::Image2DTarget, config::RenderConfig)
+    return _render_dispatch(smld, target, config)
+end
+
+# ============================================================================
+# Config form: render(smld, config)
+# ============================================================================
+
+"""
+    render(smld, config::RenderConfig) -> (Matrix{RGB{Float64}}, RenderInfo)
+
+Render using a `RenderConfig` struct. Builds target from config fields
+(`zoom`, `pixel_size`, `roi`, or `target`), then forwards to the primary form.
+"""
+function render(smld, config::RenderConfig)
+    # Build target from config
+    target = config.target
+    if target === nothing
+        @assert config.pixel_size !== nothing || config.zoom !== nothing "Must specify pixel_size, zoom, or target in RenderConfig"
+        target = create_target_from_smld(smld; pixel_size=config.pixel_size, zoom=config.zoom, roi=config.roi)
+    end
+
+    (img, info) = render(smld, target, config)
+
+    # Save to file if requested
+    if config.filename !== nothing
+        save_image(config.filename, img)
+    end
+
+    return (img, info)
+end
+
+# ============================================================================
+# Convenience form: render(smld; kwargs...)
+# ============================================================================
+
 """
     render(smld; kwargs...)
 
-Main rendering interface using keyword arguments for convenient usage.
+Convenience rendering interface. All keyword arguments match `RenderConfig` fields exactly.
 
 # Keyword Arguments
 
@@ -15,6 +79,10 @@ Main rendering interface using keyword arguments for convenient usage.
 - `pixel_size`: Pixel size in nm, uses data bounds + margin (variable output size)
 - `target`: Explicit Image2DTarget (advanced)
 
+**Region of Interest:**
+- `roi`: Camera pixel ranges as `(x_range, y_range)`. Use `:` for full range.
+  Example: `roi=(430:860, 1:256)` or `roi=(430:860, :)` for full y
+
 **Rendering:**
 - `strategy`: RenderingStrategy (default: GaussianRender())
 - `backend`: :cpu, :cuda, :metal, or :auto (default: :cpu)
@@ -22,75 +90,56 @@ Main rendering interface using keyword arguments for convenient usage.
 **Color Mapping (mutually exclusive):**
 - `colormap`: Symbol for intensity-based coloring (e.g., :inferno, :hot, :viridis)
 - `color_by`: Field symbol for field-based coloring (:z, :photons, :frame, :σ_x, etc.)
-- `color`: Manual RGB color
+- `color`: Manual color as Symbol (:red, :cyan) or RGB
+- `categorical`: Use categorical palette for integer fields like :id (default: false)
 
 **Options:**
-- `clip_percentile`: Percentile for intensity clipping (default: 0.999)
+- `clip_percentile`: Percentile for intensity clipping (default: 0.99)
+- `field_range`: Value range or :auto (default: :auto)
+- `field_clip_percentiles`: Percentile clipping tuple (default: (0.01, 0.99))
 - `filename`: Save directly to file if provided
 
 # Examples
 ```julia
 # Render exact camera FOV with 20× resolution
-img = render(smld, colormap=:inferno, zoom=20)
+(img, info) = render(smld, colormap=:inferno, zoom=20)
 
-# Render data bounds with 10nm pixels (variable output size)
-img = render(smld, color_by=:z, colormap=:viridis, pixel_size=10.0)
+# Render ROI at 20× zoom
+(img, info) = render(smld, colormap=:inferno, zoom=20, roi=(430:860, :))
 
-# Manual red color with specific zoom
-img = render(smld, color=colorant"red", zoom=15)
+# Render data bounds with 10nm pixels
+(img, info) = render(smld, color_by=:z, colormap=:viridis, pixel_size=10.0)
 
-# Circle rendering with field coloring
-img = render(smld, strategy=CircleRender(), color_by=:photons, colormap=:plasma, zoom=20)
+# Manual red color
+(img, info) = render(smld, color=:red, zoom=15)
+
+# Categorical coloring for cluster IDs
+(img, info) = render(smld, color_by=:id, categorical=true, zoom=20)
 ```
 """
 function render(smld;
-                # Rendering strategy
                 strategy::RenderingStrategy = GaussianRender(),
-
-                # Target specification
                 pixel_size::Union{Real, Nothing} = nothing,
                 zoom::Union{Real, Nothing} = nothing,
+                roi::Union{Tuple, Nothing} = nothing,
                 target::Union{Image2DTarget, Nothing} = nothing,
-
-                # Color mapping (mutually exclusive)
                 colormap::Union{Symbol, Nothing} = nothing,
                 color_by::Union{Symbol, Nothing} = nothing,
-                color::Union{RGB, Nothing} = nothing,
-
-                # Color mapping options
-                clip_percentile::Real = 0.999,
+                color::Union{RGB, Symbol, Nothing} = nothing,
+                categorical::Bool = false,
+                clip_percentile::Real = 0.99,
                 field_range::Union{Tuple{Real, Real}, Symbol} = :auto,
                 field_clip_percentiles::Union{Tuple{Real, Real}, Nothing} = (0.01, 0.99),
-
-                # Backend
                 backend::Symbol = :cpu,
-
-                # Optional file save
                 filename::Union{String, Nothing} = nothing)
 
-    # Create target if not provided
-    if target === nothing
-        @assert pixel_size !== nothing || zoom !== nothing "Must specify pixel_size, zoom, or target"
-        target = create_target_from_smld(smld; pixel_size=pixel_size, zoom=zoom)
-    end
-
-    # Determine color mapping
-    color_mapping = _determine_color_mapping(colormap, color_by, color,
-                                            clip_percentile, field_range,
-                                            field_clip_percentiles)
-
-    # Create render options
-    options = RenderOptions(strategy, color_mapping; backend=backend)
-
-    # Dispatch to appropriate rendering function
-    result = _render_dispatch(smld, target, options)
-
-    # Save to file if requested
-    if filename !== nothing
-        save_image(filename, result.image)
-    end
-
-    return result  # Always return RenderResult2D
+    config = RenderConfig(;
+        strategy, pixel_size, zoom, roi, target,
+        colormap, color_by, color, categorical,
+        clip_percentile, field_range, field_clip_percentiles,
+        backend, filename
+    )
+    return render(smld, config)
 end
 
 """
@@ -102,8 +151,9 @@ function render(smld, x_edges::AbstractVector, y_edges::AbstractVector;
                 strategy::RenderingStrategy = GaussianRender(),
                 colormap::Union{Symbol, Nothing} = nothing,
                 color_by::Union{Symbol, Nothing} = nothing,
-                color::Union{RGB, Nothing} = nothing,
-                clip_percentile::Real = 0.999,
+                color::Union{RGB, Symbol, Nothing} = nothing,
+                categorical::Bool = false,
+                clip_percentile::Real = 0.99,
                 field_range::Union{Tuple{Real, Real}, Symbol} = :auto,
                 field_clip_percentiles::Union{Tuple{Real, Real}, Nothing} = (0.01, 0.99),
                 backend::Symbol = :cpu,
@@ -120,9 +170,9 @@ function render(smld, x_edges::AbstractVector, y_edges::AbstractVector;
     y_range = (y_edges[1], y_edges[end])
     target = Image2DTarget(width, height, pixel_size_x, x_range, y_range)
 
-    # Use main render function
     return render(smld; target=target, strategy=strategy, colormap=colormap,
-                 color_by=color_by, color=color, clip_percentile=clip_percentile,
+                 color_by=color_by, color=color, categorical=categorical,
+                 clip_percentile=clip_percentile,
                  field_range=field_range, field_clip_percentiles=field_clip_percentiles,
                  backend=backend, filename=filename)
 end
@@ -165,47 +215,66 @@ function render_overlay(smlds::Vector, colors::Vector;
 
     # Create common target if not provided
     if target === nothing
-        # Use first dataset to determine bounds, but include all datasets
         @assert pixel_size !== nothing || zoom !== nothing "Must specify pixel_size, zoom, or target"
         target = create_target_from_smld(smlds[1]; pixel_size=pixel_size, zoom=zoom)
     end
 
-    # Render each dataset
+    # Render each dataset with manual color
     images = []
-    for (smld, color) in zip(smlds, rgb_colors)
-        color_mapping = ManualColorMapping(RGB{Float64}(color))
-        options = RenderOptions(strategy, color_mapping; backend=backend)
-        result = _render_dispatch(smld, target, options)
-        push!(images, result.image)  # Extract image from result
+    total_emitters = 0
+    t_start = time()
+    for (smld, clr) in zip(smlds, rgb_colors)
+        config = RenderConfig(strategy=strategy, color=RGB{Float64}(clr), backend=backend)
+        (img, info) = _render_dispatch(smld, target, config)
+        push!(images, img)
+        total_emitters += info.n_emitters_rendered
     end
 
     # Normalize each independently if requested
-    if normalize_each
+    # Skip normalization for outline renders (Circle/Ellipse) - they draw at full intensity
+    if normalize_each && !(strategy isa CircleRender || strategy isa EllipseRender)
         for i in eachindex(images)
             images[i] = _normalize_rgb_image(images[i])
         end
     end
 
     # Combine additively
-    result = zeros(RGB{Float64}, size(images[1]))
+    combined = zeros(RGB{Float64}, size(images[1]))
     for img in images
-        result .+= img
+        combined .+= img
     end
 
     # Clip to white (need to clamp each channel separately)
-    for i in eachindex(result)
-        pixel = result[i]
-        result[i] = RGB(clamp(pixel.r, 0.0, 1.0),
+    for i in eachindex(combined)
+        pixel = combined[i]
+        combined[i] = RGB(clamp(pixel.r, 0.0, 1.0),
                        clamp(pixel.g, 0.0, 1.0),
                        clamp(pixel.b, 0.0, 1.0))
     end
 
+    elapsed_s = time() - t_start
+
+    # Determine strategy symbol
+    strategy_sym = _strategy_symbol(strategy)
+
+    # Build RenderInfo for overlay
+    info = RenderInfo(
+        elapsed_s = elapsed_s,
+        backend = backend,
+        device_id = 0,
+        n_emitters_rendered = total_emitters,
+        output_size = (size(combined, 1), size(combined, 2)),
+        pixel_size_nm = target.pixel_size,
+        strategy = strategy_sym,
+        color_mode = :manual  # Overlay uses manual colors
+    )
+
     # Save to file if requested
     if filename !== nothing
-        save_image(filename, result)
+        save_image(filename, combined)
     end
 
-    return result
+    return (combined, info)
 end
 
 """
@@ -266,14 +335,19 @@ end
 # ============================================================================
 
 """
-    _determine_color_mapping(colormap, color_by, color, clip_percentile,
-                            field_range, field_clip_percentiles)
+    _determine_color_mapping(config::RenderConfig) -> ColorMapping
 
-Determine color mapping from keyword arguments.
+Construct a ColorMapping object from flat config fields.
 """
-function _determine_color_mapping(colormap, color_by, color,
-                                  clip_percentile, field_range,
-                                  field_clip_percentiles)
+function _determine_color_mapping(config::RenderConfig)
+    colormap = config.colormap
+    color_by = config.color_by
+    color = config.color
+    categorical = config.categorical
+    clip_percentile = config.clip_percentile
+    field_range = config.field_range
+    field_clip_percentiles = config.field_clip_percentiles
+
     # Check for invalid combinations
     if color !== nothing && (colormap !== nothing || color_by !== nothing)
         error("color cannot be combined with colormap or color_by")
@@ -281,17 +355,23 @@ function _determine_color_mapping(colormap, color_by, color,
 
     # Determine which mapping to use
     if color_by !== nothing
-        # Field-based coloring
-        # Use specified colormap or default to turbo (high contrast, napari standard)
-        field_colormap = colormap !== nothing ? colormap : :turbo
-        return FieldColorMapping(color_by, field_colormap, field_range,
-                                field_clip_percentiles)
+        if categorical
+            # Categorical coloring (e.g., cluster IDs)
+            palette = colormap !== nothing ? colormap : :tab10
+            return CategoricalColorMapping(color_by, palette)
+        else
+            # Field-based coloring
+            field_colormap = colormap !== nothing ? colormap : :turbo
+            return FieldColorMapping(color_by, field_colormap, field_range,
+                                    field_clip_percentiles)
+        end
     elseif colormap !== nothing
         # Intensity-based coloring
         return IntensityColorMapping(colormap, clip_percentile)
     elseif color !== nothing
-        # Manual color
-        return ManualColorMapping(RGB{Float64}(color))
+        # Manual color - parse Symbol to RGB if needed
+        rgb = color isa Symbol ? parse(Colorant, string(color)) : color
+        return ManualColorMapping(RGB{Float64}(rgb))
     else
         # Default: intensity with inferno
         return IntensityColorMapping(:inferno, clip_percentile)
@@ -299,44 +379,101 @@ function _determine_color_mapping(colormap, color_by, color,
 end
 
 """
-    _render_dispatch(smld, target, options)
+    _strategy_symbol(strategy::RenderingStrategy) -> Symbol
 
-Dispatch to appropriate rendering function based on strategy and color mapping.
+Return symbol name for a rendering strategy.
 """
-function _render_dispatch(smld, target::Image2DTarget, options::RenderOptions)
+function _strategy_symbol(strategy::RenderingStrategy)
+    if strategy isa HistogramRender
+        :histogram
+    elseif strategy isa GaussianRender
+        :gaussian
+    elseif strategy isa CircleRender
+        :circle
+    elseif strategy isa EllipseRender
+        :ellipse
+    else
+        :unknown
+    end
+end
+
+"""
+    _color_mode_symbol(color_mapping::ColorMapping) -> Symbol
+
+Return symbol name for a color mapping.
+"""
+function _color_mode_symbol(color_mapping::ColorMapping)
+    if color_mapping isa IntensityColorMapping
+        :intensity
+    elseif color_mapping isa FieldColorMapping
+        :field
+    elseif color_mapping isa CategoricalColorMapping
+        :categorical
+    elseif color_mapping isa ManualColorMapping
+        :manual
+    elseif color_mapping isa GrayscaleMapping
+        :grayscale
+    else
+        :unknown
+    end
+end
+
+"""
+    _render_dispatch(smld, target, config) -> (image, info)
+
+Dispatch to appropriate rendering function based on config.
+Constructs ColorMapping from flat config fields, then renders.
+"""
+function _render_dispatch(smld, target::Image2DTarget, config::RenderConfig)
     t_start = time()
+
+    # Construct color mapping from flat config fields
+    color_mapping = _determine_color_mapping(config)
 
     # Extract field value range if using field-based coloring (for colorbar metadata)
     field_value_range = nothing
-    if options.color_mapping isa FieldColorMapping
-        field_value_range = prepare_field_range(smld, options.color_mapping)
+    if color_mapping isa FieldColorMapping
+        field_value_range, _ = prepare_field_range(smld, color_mapping)
+    elseif color_mapping isa CategoricalColorMapping
+        field = color_mapping.field
+        if hasproperty(smld.emitters, field)
+            vals = getproperty(smld.emitters, field)
+            if !isempty(vals)
+                field_value_range = (Float64(minimum(vals)), Float64(maximum(vals)))
+            end
+        end
     end
 
     # Dispatch on strategy type
-    if options.strategy isa HistogramRender
-        img = render_histogram(smld, target, options.color_mapping)
-    elseif options.strategy isa GaussianRender
-        img = render_gaussian(smld, target, options.strategy, options.color_mapping)
-    elseif options.strategy isa CircleRender
-        img = render_circle(smld, target, options.strategy, options.color_mapping)
+    strategy = config.strategy
+    if strategy isa HistogramRender
+        img = render_histogram(smld, target, color_mapping)
+    elseif strategy isa GaussianRender
+        img = render_gaussian(smld, target, strategy, color_mapping)
+    elseif strategy isa CircleRender
+        img = render_circle(smld, target, strategy, color_mapping)
+    elseif strategy isa EllipseRender
+        img = render_ellipse(smld, target, strategy, color_mapping)
     else
-        error("Unsupported rendering strategy: $(typeof(options.strategy))")
+        error("Unsupported rendering strategy: $(typeof(strategy))")
     end
 
-    # Apply contrast if specified
-    if options.contrast !== nothing
-        img = apply_contrast(img, options.contrast)
-    end
+    elapsed_s = time() - t_start
 
-    t_end = time()
-    render_time = t_end - t_start
+    # Build RenderInfo
+    info = RenderInfo(
+        elapsed_s = elapsed_s,
+        backend = config.backend,
+        device_id = 0,  # CPU = 0
+        n_emitters_rendered = length(smld.emitters),
+        output_size = (size(img, 1), size(img, 2)),
+        pixel_size_nm = target.pixel_size,
+        strategy = _strategy_symbol(strategy),
+        color_mode = _color_mode_symbol(color_mapping),
+        field_range = field_value_range
+    )
 
-    # Create result with field metadata
-    n_locs = length(smld.emitters)
-    result = RenderResult2D(img, target, options, render_time, n_locs, field_value_range)
-
-    # Always return RenderResult2D (user accesses .image when needed)
-    return result
+    return (img, info)
 end
 
 """
@@ -354,17 +491,4 @@ function _normalize_rgb_image(img::Matrix{RGB{Float64}})
     end
 
     return img ./ max_val
-end
-
-"""
-    apply_contrast(img::Matrix{RGB{Float64}}, options::ContrastOptions)
-
-Apply contrast enhancement to RGB image.
-"""
-function apply_contrast(img::Matrix{RGB{Float64}}, options::ContrastOptions)
-    # For now, just return img (contrast enhancement can be added in future)
-    # This would involve converting RGB to intensity, applying contrast,
-    # then mapping back to RGB
-    @warn "Contrast enhancement not yet implemented" maxlog=1
-    return img
 end

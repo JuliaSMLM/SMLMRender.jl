@@ -18,6 +18,7 @@ Render2DStrategy
 HistogramRender
 GaussianRender
 CircleRender
+EllipseRender
 ```
 
 ## Color Mapping
@@ -28,6 +29,7 @@ IntensityColorMapping
 FieldColorMapping
 ManualColorMapping
 GrayscaleMapping
+CategoricalColorMapping
 ```
 
 ## Render Targets
@@ -47,7 +49,7 @@ ContrastOptions
 ## Configuration and Results
 
 ```@docs
-RenderOptions
+RenderConfig
 RenderResult2D
 ```
 
@@ -58,4 +60,5 @@ create_target_from_smld
 save_image
 export_colorbar
 list_recommended_colormaps
+api
 ```
