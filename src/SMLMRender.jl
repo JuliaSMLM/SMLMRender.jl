@@ -21,6 +21,8 @@ using ColorSchemes
 using Statistics
 using FileIO
 using ImageIO
+using Reexport
+@reexport using SMLMData
 using SMLMData: AbstractSMLMConfig, AbstractSMLMInfo
 
 # Core types

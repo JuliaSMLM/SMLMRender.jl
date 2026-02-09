@@ -4,9 +4,9 @@ High-performance rendering for Single Molecule Localization Microscopy (SMLM) da
 
 ## Exports Summary
 
-Total exports: 24 (1 function, 18 types, 5 utilities)
+Total exports: 25 (2 functions, 18 types, 5 utilities)
 
-**Main Function:** `render()` - returns `(image, info)` tuple
+**Main Functions:** `render()` - returns `(image, info)` tuple; `api()` - returns API documentation as String
 
 **Rendering Strategies:** `RenderingStrategy`, `Render2DStrategy`, `HistogramRender`, `GaussianRender`, `CircleRender`, `EllipseRender`
 
@@ -23,7 +23,7 @@ Total exports: 24 (1 function, 18 types, 5 utilities)
 SMLMRender converts localization data into publication-quality images through a configurable pipeline:
 
 1. **Target Specification** - Define output image dimensions and physical bounds (zoom vs pixel_size modes)
-2. **Rendering Strategy** - Choose algorithm for converting localizations to pixels (Histogram, Gaussian, Circle)
+2. **Rendering Strategy** - Choose algorithm for converting localizations to pixels (Histogram, Gaussian, Circle, Ellipse)
 3. **Color Mapping** - Map intensity or field values to colors (intensity-based, field-based, or manual)
 4. **Result** - Get `(image, info)` tuple containing the rendered image and `RenderInfo` metadata
 
@@ -44,6 +44,8 @@ Physical coordinates are in micrometers (μm). Pixel sizes are in nanometers (nm
 **GaussianRender:** Renders each localization as a 2D Gaussian blob. Provides smooth, publication-quality images with sub-pixel accuracy. Can use localization precision (σ_x, σ_y fields) or fixed sigma.
 
 **CircleRender:** Renders localization as circle outline. Useful for visualizing localization precision when σ represents uncertainty radius. Circle radius can be multiple of σ.
+
+**EllipseRender:** Renders localization as ellipse outline using separate σ_x, σ_y for axis radii. Uses σ_xy covariance for rotation when available. Useful for visualizing anisotropic localization precision.
 
 ### Color Mapping Strategies
 
@@ -66,13 +68,15 @@ RenderingStrategy (abstract)
 ├── Render2DStrategy (abstract)
     ├── HistogramRender
     ├── GaussianRender
-    └── CircleRender
+    ├── CircleRender
+    └── EllipseRender
 
 ColorMapping (abstract)
 ├── IntensityColorMapping
 ├── FieldColorMapping
 ├── ManualColorMapping
-└── GrayscaleMapping
+├── GrayscaleMapping
+└── CategoricalColorMapping
 
 RenderTarget (abstract)
 └── Image2DTarget
@@ -106,6 +110,15 @@ struct CircleRender <: Render2DStrategy
     line_width::Float64                    # Outline width in pixels
     use_localization_precision::Bool       # Use σ_x, σ_y or fixed radius
     fixed_radius::Union{Float64, Nothing}  # Fixed radius in nm
+end
+
+# Ellipse outline rendering (anisotropic precision)
+struct EllipseRender <: Render2DStrategy
+    radius_factor::Float64                     # Multiply sigma by this (1.0=1σ, 2.0=2σ)
+    line_width::Float64                        # Outline width in pixels
+    use_localization_precision::Bool            # Use σ_x, σ_y from data or fixed radii
+    fixed_radius_x::Union{Float64, Nothing}    # Fixed x-radius in nm
+    fixed_radius_y::Union{Float64, Nothing}    # Fixed y-radius in nm
 end
 ```
 
@@ -329,12 +342,20 @@ Export colorbar legend showing field value to color mapping.
 
 Only works for field-based coloring (when `color_by=...` was used).
 
+#### `api() -> String`
+
+Return this API documentation as a plain string. Useful for LLM-assisted development.
+
+```julia
+println(SMLMRender.api())
+```
+
 ## Common Workflows
 
 ### Basic Intensity Rendering
 
 ```julia
-using SMLMData, SMLMRender
+using SMLMRender
 
 # Load data
 smld = load_smite_2d("data.mat")
@@ -442,6 +463,16 @@ render([smld1, smld2],
                 color_by=:photons,
                 colormap=:plasma,
                 zoom=50)
+
+# Ellipse rendering (anisotropic precision)
+(img, info) = render(smld,
+                strategy=EllipseRender(radius_factor=2.0,
+                                      line_width=1.0,
+                                      use_localization_precision=true,
+                                      fixed_radius_x=nothing,
+                                      fixed_radius_y=nothing),
+                colormap=:inferno,
+                zoom=50)
 ```
 
 ### Using Pixel Size Mode
@@ -460,7 +491,7 @@ target = create_target_from_smld(smld, pixel_size=5.0, margin=0.1)  # 10% margin
 ### Example 1: Basic Workflow
 
 ```julia
-using SMLMData, SMLMRender
+using SMLMRender
 using Colors
 
 # Create test data with localization precision
@@ -485,7 +516,7 @@ save_image("rendered.png", img)
 ### Example 2: Field Coloring with Colorbar
 
 ```julia
-using SMLMData, SMLMRender
+using SMLMRender
 
 # Load 3D data with z-coordinates
 smld = load_smite_3d("3d_data.mat")
@@ -513,7 +544,7 @@ export_colorbar(:turbo,
 ### Example 3: Multi-Channel Overlay
 
 ```julia
-using SMLMData, SMLMRender
+using SMLMRender
 using Colors
 
 # Load two-color data
@@ -539,7 +570,7 @@ render([smld_ch1, smld_ch2],
 ### Example 4: ROI and Strategy Comparison
 
 ```julia
-using SMLMData, SMLMRender
+using SMLMRender
 
 smld = load_smite_2d("dense_data.mat")
 
@@ -576,7 +607,7 @@ println("Circle: $(info_circ.elapsed_s * 1000) ms")
 ### Example 5: Exploring Colormaps
 
 ```julia
-using SMLMData, SMLMRender
+using SMLMRender
 
 smld = load_smite_2d("data.mat")
 
@@ -604,7 +635,7 @@ render(smld,
 ### Example 6: Custom Rendering Parameters
 
 ```julia
-using SMLMData, SMLMRender
+using SMLMRender
 
 smld = load_smite_2d("data.mat")
 

@@ -50,7 +50,14 @@ ContrastOptions
 
 ```@docs
 RenderConfig
+RenderInfo
 RenderResult2D
+```
+
+## Module
+
+```@docs
+SMLMRender
 ```
 
 ## Utility Functions
