@@ -20,17 +20,19 @@ Provides smooth, publication-quality images with sub-pixel accuracy.
 Returns Matrix{RGB{Float64}}
 """
 function render_gaussian(smld, target::Image2DTarget, strategy::GaussianRender,
-                        color_mapping::ColorMapping)
+                        color_mapping::ColorMapping; clip_percentile::Float64=0.99)
     if color_mapping isa IntensityColorMapping
         return render_gaussian_intensity(smld, target, strategy, color_mapping)
     elseif color_mapping isa FieldColorMapping
-        return render_gaussian_field(smld, target, strategy, color_mapping)
+        return render_gaussian_field(smld, target, strategy, color_mapping;
+                                    clip_percentile=clip_percentile)
     elseif color_mapping isa ManualColorMapping
         return render_gaussian_manual(smld, target, strategy, color_mapping)
     elseif color_mapping isa GrayscaleMapping
         return render_gaussian_grayscale(smld, target, strategy)
     elseif color_mapping isa CategoricalColorMapping
-        return render_gaussian_categorical(smld, target, strategy, color_mapping)
+        return render_gaussian_categorical(smld, target, strategy, color_mapping;
+                                          clip_percentile=clip_percentile)
     else
         error("Unsupported color mapping type for Gaussian render")
     end
@@ -77,7 +79,8 @@ Each blob is colored according to its field value.
 """
 function render_gaussian_field(smld, target::Image2DTarget,
                               strategy::GaussianRender,
-                              mapping::FieldColorMapping)
+                              mapping::FieldColorMapping;
+                              clip_percentile::Float64=0.99)
     # Use intensity-weighted color algorithm
     # Track both intensity and color numerators for proper weighting
 
@@ -109,7 +112,8 @@ function render_gaussian_field(smld, target::Image2DTarget,
     end
 
     # Compute intensity-weighted color with gamma correction
-    return apply_intensity_weighted_color(intensity, r_num, g_num, b_num)
+    return apply_intensity_weighted_color(intensity, r_num, g_num, b_num;
+                                         clip_percentile=clip_percentile)
 end
 
 """
@@ -178,7 +182,8 @@ Each blob is colored by its integer field value using modular palette indexing.
 """
 function render_gaussian_categorical(smld, target::Image2DTarget,
                                      strategy::GaussianRender,
-                                     mapping::CategoricalColorMapping)
+                                     mapping::CategoricalColorMapping;
+                                     clip_percentile::Float64=0.99)
     # Use intensity-weighted color algorithm (same as field coloring)
     intensity = zeros(Float64, target.height, target.width)
     r_num = zeros(Float64, target.height, target.width)
@@ -204,7 +209,8 @@ function render_gaussian_categorical(smld, target::Image2DTarget,
     end
 
     # Compute intensity-weighted color with gamma correction
-    return apply_intensity_weighted_color(intensity, r_num, g_num, b_num)
+    return apply_intensity_weighted_color(intensity, r_num, g_num, b_num;
+                                         clip_percentile=clip_percentile)
 end
 
 """

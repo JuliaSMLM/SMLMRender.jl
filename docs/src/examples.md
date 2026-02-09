@@ -2,30 +2,50 @@
 
 Examples for rendering modes in SMLMRender.jl.
 
-## Setup: Simulated Data
+## Setup: Siemens Star Test Pattern
 
-All examples below use this simulated dataset:
+All examples below use a Siemens star pattern — 16 slices (8 filled, 8 empty) with
+z-depth increasing with angular position (0 to 2π maps to -1 to +1 μm):
 
 ```@setup examples
-using SMLMData, SMLMRender, SMLMSim, MicroscopePSFs
-using Colors
+using SMLMRender, SMLMData
+using Colors, Random
 
-# Compact FOV to see fine details
-params = StaticSMLMParams(
-    density = 2.0,               # 2 patterns per μm²
-    σ_psf = 0.13,                # 130nm PSF width
-    nframes = 20,                # 2x frames for 2x localizations per emitter
-    framerate = 20.0,
-    ndims = 3,                   # Enable 3D for z-depth examples
-    zrange = [-0.5, 0.5]         # ±500nm z-range
-)
+Random.seed!(42)
 
-camera = IdealCamera(16, 16, 0.1)    # 16×16 pixels, 100nm/pixel = 1.6μm FOV
-pattern = Nmer3D(n=8, d=0.15)        # Octamer, 150nm diameter
-fluor = GenericFluor(photons=1000.0, k_off=10.0, k_on=0.5)  # 1000 photons/localization
+# Siemens star: 16 slices, 8 filled / 8 empty, z varies with angle
+n_slices = 16
+R_min, R_max = 0.1, 3.0          # inner/outer radius (μm)
+cx, cy = 3.2, 3.2                 # center of FOV
+density = 400.0                    # emitters per μm²
+σ_psf = 0.13                      # 130nm PSF width (μm)
 
-smld_true, smld_model, smld_noisy = simulate(params; pattern, molecule=fluor, camera)
-smld = smld_noisy  # Use noisy localizations (realistic)
+wedge_area = (π / n_slices) * (R_max^2 - R_min^2)
+n_per_wedge = round(Int, density * wedge_area)
+
+emitters = Emitter3DFit{Float64}[]
+for s in 0:(n_slices - 1)
+    iseven(s) || continue          # fill even slices only
+    θ_min = 2π * s / n_slices
+    θ_max = 2π * (s + 1) / n_slices
+    θ_mid = (θ_min + θ_max) / 2
+    z = -1.0 + 2.0 * θ_mid / (2π)
+    for _ in 1:n_per_wedge
+        r = sqrt(rand() * (R_max^2 - R_min^2) + R_min^2)
+        θ = θ_min + rand() * (θ_max - θ_min)
+        x = cx + r * cos(θ)
+        y = cy + r * sin(θ)
+        photons = max(10.0, randexp() * 500.0)   # Exp(500), floor at 10
+        σ = σ_psf / sqrt(photons)                 # localization precision
+        push!(emitters, Emitter3DFit{Float64}(
+            x, y, z, photons, 10.0, σ, σ, 0.050, 50.0, 2.0;
+            frame=mod1(s+1, 20), id=length(emitters)+1
+        ))
+    end
+end
+
+camera = IdealCamera(64, 64, 0.1)    # 64×64 pixels, 100nm/pixel = 6.4μm FOV
+smld = BasicSMLD(emitters, camera, 20, 1)
 
 # Helper to clamp RGB values for saving (saturating strategies can exceed 1.0)
 clamp_rgb(img) = map(px -> RGB(clamp(px.r, 0, 1), clamp(px.g, 0, 1), clamp(px.b, 0, 1)), img)
@@ -35,9 +55,44 @@ clamp_rgb(img) = map(px -> RGB(clamp(px.r, 0, 1), clamp(px.g, 0, 1), clamp(px.b,
 n_pixels = length(camera.pixel_edges_x) - 1
 pixel_size_um = camera.pixel_edges_x[2] - camera.pixel_edges_x[1]
 fov_um = n_pixels * pixel_size_um
-println("Dataset: $(length(smld.emitters)) localizations")
+println("Dataset: $(length(smld.emitters)) localizations (Siemens star, 8 wedges)")
 println("Field of view: $(round(fov_um, digits=2))μm × $(round(fov_um, digits=2))μm")
 ```
+
+## Rendering Gallery
+
+A side-by-side comparison of rendering strategies on the same simulated data:
+
+```@example examples
+using FileIO # hide
+
+# Histogram — z-depth, turbo (10x zoom)
+config_hist = RenderConfig(strategy=HistogramRender(), color_by=:z, colormap=:turbo, zoom=10)
+(img_gh, _) = render(smld, config_hist)
+save("gallery_histogram.png", clamp_rgb(img_gh)) # hide
+
+# Gaussian — intensity, inferno (40x zoom — need σ_pix > 2 for visible blobs)
+config_gauss = RenderConfig(strategy=GaussianRender(use_localization_precision=true), colormap=:inferno, zoom=40)
+(img_gg, _) = render(smld, config_gauss)
+save("gallery_gaussian.png", img_gg) # hide
+
+# Circle — z-depth, turbo (50x zoom)
+config_circle = RenderConfig(strategy=CircleRender(use_localization_precision=true), color_by=:z, colormap=:turbo, zoom=50)
+(img_gc, _) = render(smld, config_circle)
+save("gallery_circle.png", clamp_rgb(img_gc)) # hide
+
+# Gaussian + Z-depth — turbo (40x zoom)
+config_gz = RenderConfig(strategy=GaussianRender(use_localization_precision=true), color_by=:z, colormap=:turbo, zoom=40, clip_percentile=0.90)
+(img_gz, _) = render(smld, config_gz)
+save("gallery_z.png", clamp_rgb(img_gz)) # hide
+
+nothing # hide
+```
+
+| Histogram (10x) | Gaussian (40x) | Circle (50x) | Gaussian + Z (40x) |
+|:-:|:-:|:-:|:-:|
+| ![Histogram](gallery_histogram.png) | ![Gaussian](gallery_gaussian.png) | ![Circle](gallery_circle.png) | ![Z-depth](gallery_z.png) |
+| Z-depth / turbo | Intensity / inferno | Z-depth / turbo | Z-depth / turbo |
 
 ## Basic Usage
 
@@ -49,18 +104,15 @@ The simplest way to render SMLM data is with intensity-based colormapping:
 using FileIO # hide
 
 # Render with default settings (GaussianRender, :inferno colormap)
-result = render(smld, zoom=20)
-
-# Access the image
-img = result.image  # Matrix{RGB{Float64}}
+(img, info) = render(smld, RenderConfig(zoom=20))
 
 # Check rendering metadata
-println("Rendered $(result.n_localizations) localizations")
-println("Image size: $(size(result.image))")
-println("Render time: $(round(result.render_time * 1000, digits=1)) ms")
+println("Rendered $(info.n_emitters_rendered) localizations")
+println("Image size: $(size(img))")
+println("Render time: $(round(info.elapsed_s * 1000, digits=1)) ms")
 
 # Save and display
-save("basic_render.png", result.image) # hide
+save("basic_render.png", img) # hide
 nothing # hide
 ```
 
@@ -72,16 +124,16 @@ Choose from many available colormaps:
 
 ```@example examples
 # Classic SMLM hot colormap (black → red → yellow → white)
-result_hot = render(smld, colormap=:hot, zoom=20)
-save("colormap_hot.png", result_hot.image) # hide
+(img_hot, _) = render(smld, RenderConfig(colormap=:hot, zoom=20))
+save("colormap_hot.png", img_hot) # hide
 
 # Inferno colormap (black → purple → orange → yellow)
-result_inferno = render(smld, colormap=:inferno, zoom=20)
-save("colormap_inferno.png", result_inferno.image) # hide
+(img_inferno, _) = render(smld, RenderConfig(colormap=:inferno, zoom=20))
+save("colormap_inferno.png", img_inferno) # hide
 
 # Magma colormap (black → purple → pink → yellow)
-result_magma = render(smld, colormap=:magma, zoom=20)
-save("colormap_magma.png", result_magma.image) # hide
+(img_magma, _) = render(smld, RenderConfig(colormap=:magma, zoom=20))
+save("colormap_magma.png", img_magma) # hide
 
 println("Rendered with 3 different colormaps")
 nothing # hide
@@ -96,7 +148,7 @@ nothing # hide
 Two modes for controlling output resolution:
 
 **zoom**: Renders exact camera FOV with `camera_pixels × zoom` output
-- `zoom=20` with 16×16 camera → exactly 320×320 pixels
+- `zoom=20` with 64×64 camera → exactly 1280×1280 pixels
 - Output range = camera FOV (no cropping)
 - Predictable, reproducible sizes
 
@@ -111,20 +163,20 @@ Two modes for controlling output resolution:
 - Use `:` for full range on an axis
 
 ```@example examples
-# zoom: Exact camera FOV (16×16 camera → 320×320 output)
-result_zoom = render(smld, zoom=20, colormap=:inferno)
-println("Zoom (camera FOV): $(size(result_zoom.image))")
-println("  Range: x=$(result_zoom.target.x_range), y=$(result_zoom.target.y_range)")
+# zoom: Exact camera FOV (64×64 camera → 1280×1280 output)
+(img_zoom, info_zoom) = render(smld, RenderConfig(zoom=20, colormap=:inferno))
+println("Zoom (camera FOV): $(size(img_zoom))")
+println("  Output: $(info_zoom.output_size), pixel_size=$(info_zoom.pixel_size_nm) nm")
 
 # pixel_size: Data bounds + margin (variable size)
-result_px = render(smld, pixel_size=5.0, colormap=:inferno)
-println("Pixel size (data bounds): $(size(result_px.image))")
-println("  Range: x=$(round.(result_px.target.x_range, digits=2)), y=$(round.(result_px.target.y_range, digits=2))")
+(img_px, info_px) = render(smld, RenderConfig(pixel_size=5.0, colormap=:inferno))
+println("Pixel size (data bounds): $(size(img_px))")
+println("  Output: $(info_px.output_size), pixel_size=$(info_px.pixel_size_nm) nm")
 
-# roi: Subset of camera FOV (e.g., x pixels 5-12, full y)
-result_roi = render(smld, zoom=20, roi=(5:12, :), colormap=:inferno)
-println("ROI (subset): $(size(result_roi.image))")
-println("  Range: x=$(result_roi.target.x_range), y=$(result_roi.target.y_range)")
+# roi: Subset of camera FOV
+(img_roi, info_roi) = render(smld, RenderConfig(zoom=20, roi=(20:44, :), colormap=:inferno))
+println("ROI (subset): $(size(img_roi))")
+println("  Output: $(info_roi.output_size), pixel_size=$(info_roi.pixel_size_nm) nm")
 ```
 
 ## Rendering Strategies
@@ -135,14 +187,15 @@ Fast binning-based rendering.
 
 ```@example examples
 # Histogram with time coloring (color by frame number)
-result_hist = render(smld,
+config = RenderConfig(
     strategy = HistogramRender(),
     color_by = :frame,           # Temporal dynamics
     colormap = :turbo,           # High contrast for time
     zoom = 20)
+(img_hist, info_hist) = render(smld, config)
 
-save("strategy_histogram.png", clamp_rgb(result_hist.image)) # hide
-println("Histogram render: $(size(result_hist.image))")
+save("strategy_histogram.png", clamp_rgb(img_hist)) # hide
+println("Histogram render: $(size(img_hist))")
 nothing # hide
 ```
 
@@ -154,7 +207,7 @@ Renders each localization as a smooth 2D Gaussian blob.
 
 ```@example examples
 # Gaussian with localization precision (uses σ_x, σ_y from data)
-result_gauss = render(smld,
+config = RenderConfig(
     strategy = GaussianRender(
         n_sigmas = 3.0,                      # Render out to 3σ
         use_localization_precision = true,
@@ -162,9 +215,10 @@ result_gauss = render(smld,
     ),
     colormap = :hot,
     zoom = 20)
+(img_gauss, info_gauss) = render(smld, config)
 
-save("strategy_gaussian.png", result_gauss.image) # hide
-println("Gaussian render: $(size(result_gauss.image))")
+save("strategy_gaussian.png", img_gauss) # hide
+println("Gaussian render: $(size(img_gauss))")
 nothing # hide
 ```
 
@@ -176,7 +230,7 @@ Renders each localization as a circle outline. Useful for visualizing uncertaint
 
 ```@example examples
 # 1σ circles with time coloring
-result_circle = render(smld,
+config = RenderConfig(
     strategy = CircleRender(
         radius_factor = 1.0,                 # 1σ radius
         line_width = 1.0,
@@ -185,9 +239,10 @@ result_circle = render(smld,
     color_by = :frame,                       # Temporal dynamics
     colormap = :turbo,                       # High contrast rainbow
     zoom = 20)
+(img_circle, info_circle) = render(smld, config)
 
-save("strategy_circle.png", clamp_rgb(result_circle.image)) # hide
-println("Circle render: $(size(result_circle.image))")
+save("strategy_circle.png", clamp_rgb(img_circle)) # hide
+println("Circle render: $(size(img_circle))")
 nothing # hide
 ```
 
@@ -201,42 +256,40 @@ Color each localization by a field value (z-depth, photons, frame, etc.).
 
 ```@example examples
 # Color by z-depth (default turbo colormap)
-result_z = render(smld, color_by=:z, zoom=20)
-println("Z-depth coloring: $(result_z.field_value_range)")
+(img_z, info_z) = render(smld, RenderConfig(color_by=:z, zoom=20))
+println("Z-depth coloring: $(info_z.field_range)")
 ```
 
 ### Color by Photons
 
 ```@example examples
 # Color by photon count
-result_photons = render(smld, color_by=:photons, colormap=:viridis, zoom=20)
-println("Photon range: $(result_photons.field_value_range)")
+(img_photons, info_photons) = render(smld, RenderConfig(color_by=:photons, colormap=:viridis, zoom=20))
+println("Photon range: $(info_photons.field_range)")
 ```
 
 ### Color by Frame (Temporal Dynamics)
 
 ```@example examples
 # Color by frame number (temporal information)
-result_frame = render(smld, color_by=:frame, colormap=:twilight, zoom=20)
-println("Frame range: $(result_frame.field_value_range)")
+(img_frame, info_frame) = render(smld, RenderConfig(color_by=:frame, colormap=:twilight, zoom=20))
+println("Frame range: $(info_frame.field_range)")
 ```
 
 ### Color by Localization Precision
 
 ```@example examples
 # Color by σ_x (localization precision)
-result = render(smld,
-    color_by = :σ_x,
-    colormap = :plasma,
-    zoom = 20,
-    filename = "precision.png")
+config = RenderConfig(color_by=:σ_x, colormap=:plasma, zoom=20, filename="precision.png")
+(img_prec, info_prec) = render(smld, config)
+nothing # hide
 ```
 
 ### Field Coloring Options
 
 ```julia
 # Explicit field value range
-result = render(smld,
+(img, info) = render(smld,
     color_by = :z,
     colormap = :turbo,
     field_range = (-500.0, 500.0),           # Fixed range in nm
@@ -244,7 +297,7 @@ result = render(smld,
     filename = "z_fixed_range.png")
 
 # Custom percentile clipping
-result = render(smld,
+(img, info) = render(smld,
     color_by = :photons,
     colormap = :viridis,
     field_clip_percentiles = (0.05, 0.95),   # Clip outliers
@@ -252,7 +305,7 @@ result = render(smld,
     filename = "photons_clipped.png")
 
 # Auto range with clipping (default)
-result = render(smld,
+(img, info) = render(smld,
     color_by = :z,
     colormap = :plasma,
     field_range = :auto,                     # Auto-detect range
@@ -268,16 +321,12 @@ Render multiple datasets with different colors and overlay them.
 ### Two-Color Overlay
 
 ```julia
-# Load two channels
-smld_protein1 = load_smld("channel1.h5")
-smld_protein2 = load_smld("channel2.h5")
-
 # Two-color overlay using dispatch (no Colors import needed!)
-result = render([smld_protein1, smld_protein2],
-                colors = [:red, :green],
-                strategy = GaussianRender(),
-                zoom = 20,
-                filename = "two_color.png")
+(img, info) = render([smld_protein1, smld_protein2],
+                     colors = [:red, :green],
+                     strategy = GaussianRender(),
+                     zoom = 20,
+                     filename = "two_color.png")
 
 # Each channel is:
 # 1. Rendered independently
@@ -290,15 +339,11 @@ result = render([smld_protein1, smld_protein2],
 
 ```julia
 # Three-color overlay
-smld1 = load_smld("channel1.h5")
-smld2 = load_smld("channel2.h5")
-smld3 = load_smld("channel3.h5")
-
-result = render([smld1, smld2, smld3],
-                colors = [:red, :green, :blue],
-                strategy = GaussianRender(),
-                zoom = 20,
-                filename = "three_color.png")
+(img, info) = render([smld1, smld2, smld3],
+                     colors = [:red, :green, :blue],
+                     strategy = GaussianRender(),
+                     zoom = 20,
+                     filename = "three_color.png")
 ```
 
 ### Custom Colors
@@ -307,16 +352,16 @@ result = render([smld1, smld2, smld3],
 using Colors
 
 # Custom RGB colors
-result = render([smld1, smld2],
-                colors = [RGB(1.0, 0.0, 0.0), RGB(0.0, 1.0, 1.0)],  # Red and cyan
-                zoom = 20,
-                filename = "custom_colors.png")
+(img, info) = render([smld1, smld2],
+                     colors = [RGB(1.0, 0.0, 0.0), RGB(0.0, 1.0, 1.0)],  # Red and cyan
+                     zoom = 20,
+                     filename = "custom_colors.png")
 
 # Named colors (no import needed!)
-result = render([smld1, smld2],
-                colors = [:magenta, :yellow],
-                zoom = 20,
-                filename = "magenta_yellow.png")
+(img, info) = render([smld1, smld2],
+                     colors = [:magenta, :yellow],
+                     zoom = 20,
+                     filename = "magenta_yellow.png")
 ```
 
 ### Multi-Channel with Different Strategies
@@ -326,11 +371,11 @@ result = render([smld1, smld2],
 # For different strategies per channel, render separately and combine manually
 
 # Render each channel
-result1 = render(smld1, color=colorant"red", strategy=GaussianRender(), zoom=20)
-result2 = render(smld2, color=colorant"green", strategy=CircleRender(), zoom=20)
+(img1, _) = render(smld1, color=:red, strategy=GaussianRender(), zoom=20)
+(img2, _) = render(smld2, color=:green, strategy=CircleRender(), zoom=20)
 
 # Manual combination
-img_combined = result1.image .+ result2.image
+img_combined = img1 .+ img2
 save_image("mixed_strategies.png", img_combined)
 ```
 
@@ -340,23 +385,19 @@ save_image("mixed_strategies.png", img_combined)
 
 ```julia
 # Save directly during rendering
-result = render(smld, 
-                colormap = :inferno,
-                zoom = 20,
-                filename = "output.png")
+(img, info) = render(smld,
+                     colormap = :inferno,
+                     zoom = 20,
+                     filename = "output.png")
 
 # Or save later
-result = render(smld, colormap=:inferno, zoom=20)
-save_image("output.png", result.image)
+(img, info) = render(smld, colormap=:inferno, zoom=20)
+save_image("output.png", img)
 ```
 
 ### Export Colorbar
 
 ```julia
-# Easy way: from render result
-result = render(smld, color_by=:z, colormap=:turbo, zoom=20)
-export_colorbar(result, "colorbar.png")
-
 # Manual way with custom parameters
 export_colorbar(:turbo,                      # Colormap
                 (-500.0, 500.0),             # Value range
@@ -366,28 +407,21 @@ export_colorbar(:turbo,                      # Colormap
                 size = (80, 400),            # (width, height) in pixels
                 fontsize = 14,               # Label font size
                 tickfontsize = 12)           # Tick font size
-
-# Horizontal colorbar
-export_colorbar(result, "colorbar_horiz.png",
-                orientation = :horizontal,
-                size = (400, 80))
 ```
 
 ### Access Result Metadata
 
 ```julia
-result = render(smld, color_by=:z, colormap=:turbo, zoom=20)
+(img, info) = render(smld, color_by=:z, colormap=:turbo, zoom=20)
 
-# Access various fields
-println("Image size: ", size(result.image))
-println("Number of localizations: ", result.n_localizations)
-println("Render time: ", result.render_time, " seconds")
-println("Pixel size: ", result.target.pixel_size, " nm")
-println("Field value range: ", result.field_value_range)
-
-# Access render options used
-println("Strategy: ", typeof(result.options.strategy))
-println("Color mapping: ", typeof(result.options.color_mapping))
+# Access RenderInfo fields
+println("Image size: ", size(img))
+println("Emitters rendered: ", info.n_emitters_rendered)
+println("Render time: ", info.elapsed_s, " seconds")
+println("Pixel size: ", info.pixel_size_nm, " nm")
+println("Strategy: ", info.strategy)
+println("Color mode: ", info.color_mode)
+println("Field range: ", info.field_range)
 ```
 
 ## Custom Targets
@@ -399,10 +433,10 @@ println("Color mapping: ", typeof(result.options.color_mapping))
 x_edges = range(0.0, 10.0, length=201)  # 200 pixels, 0-10 μm
 y_edges = range(0.0, 10.0, length=201)
 
-result = render(smld, x_edges, y_edges,
-                strategy = GaussianRender(),
-                colormap = :inferno,
-                filename = "custom_edges.png")
+(img, info) = render(smld, x_edges, y_edges,
+                     strategy = GaussianRender(),
+                     colormap = :inferno,
+                     filename = "custom_edges.png")
 ```
 
 ### Manual Target Creation
@@ -417,11 +451,11 @@ target = Image2DTarget(
     (0.0, 5.12)                # y range in μm
 )
 
-result = render(smld,
-                target = target,
-                strategy = GaussianRender(),
-                colormap = :hot,
-                filename = "manual_target.png")
+(img, info) = render(smld,
+                     target = target,
+                     strategy = GaussianRender(),
+                     colormap = :hot,
+                     filename = "manual_target.png")
 ```
 
 ## Performance Tips
@@ -446,10 +480,10 @@ println("Estimated memory: ", mem_gb, " GB")
 
 ```julia
 # CPU backend (default)
-result = render(smld, backend=:cpu, zoom=20)
+(img, info) = render(smld, backend=:cpu, zoom=20)
 
 # Auto backend selection (future: may select GPU if available)
-result = render(smld, backend=:auto, zoom=20)
+(img, info) = render(smld, backend=:auto, zoom=20)
 
 # Note: CUDA and Metal backends planned for future releases
 ```
@@ -458,18 +492,18 @@ result = render(smld, backend=:auto, zoom=20)
 
 ```julia
 # For very large datasets, use HistogramRender for speed
-result = render(smld,
-                strategy = HistogramRender(),
-                colormap = :hot,
-                zoom = 10,
-                filename = "large_dataset.png")
+(img, info) = render(smld,
+                     strategy = HistogramRender(),
+                     colormap = :hot,
+                     zoom = 10,
+                     filename = "large_dataset.png")
 
 # Or reduce zoom factor to reduce output size
-result = render(smld,
-                strategy = GaussianRender(),
-                colormap = :inferno,
-                zoom = 5,                    # Lower zoom = smaller output
-                filename = "large_lowzoom.png")
+(img, info) = render(smld,
+                     strategy = GaussianRender(),
+                     colormap = :inferno,
+                     zoom = 5,               # Lower zoom = smaller output
+                     filename = "large_lowzoom.png")
 ```
 
 ## Available Colormaps
@@ -500,63 +534,63 @@ Perceptual: [:viridis, :cividis, :inferno, :magma, :plasma]
 
 ```julia
 # Quick low-resolution preview
-result = render(smld, zoom=5, colormap=:hot, filename="preview.png")
+(img, info) = render(smld, zoom=5, colormap=:hot, filename="preview.png")
 ```
 
 ### Publication Figure
 
 ```julia
 # High-quality Gaussian rendering for publication
-result = render(smld,
-                strategy = GaussianRender(
-                    n_sigmas = 3.0,
-                    use_localization_precision = true,
-                    normalization = :integral
-                ),
-                colormap = :inferno,
-                zoom = 30,                   # High zoom for detail
-                filename = "publication.png")
+(img, info) = render(smld,
+                     strategy = GaussianRender(
+                         n_sigmas = 3.0,
+                         use_localization_precision = true,
+                         normalization = :integral
+                     ),
+                     colormap = :inferno,
+                     zoom = 30,              # High zoom for detail
+                     filename = "publication.png")
 ```
 
 ### Uncertainty Visualization
 
 ```julia
 # Show localization precision with circles
-result = render(smld,
-                strategy = CircleRender(
-                    radius_factor = 1.0,     # 1σ circles
-                    line_width = 1.0,
-                    use_localization_precision = true
-                ),
-                color_by = :σ_x,            # Color by precision
-                colormap = :plasma,
-                zoom = 50,
-                filename = "uncertainty.png")
+(img, info) = render(smld,
+                     strategy = CircleRender(
+                         radius_factor = 1.0,    # 1σ circles
+                         line_width = 1.0,
+                         use_localization_precision = true
+                     ),
+                     color_by = :σ_x,            # Color by precision
+                     colormap = :plasma,
+                     zoom = 50,
+                     filename = "uncertainty.png")
 ```
 
 ### 3D Depth Encoding
 
 ```julia
 # Encode z-depth in color
-result = render(smld,
-                strategy = GaussianRender(),
-                color_by = :z,
-                colormap = :turbo,
-                zoom = 20,
-                filename = "3d_depth.png")
+(img, info) = render(smld,
+                     strategy = GaussianRender(),
+                     color_by = :z,
+                     colormap = :turbo,
+                     zoom = 20,
+                     filename = "3d_depth.png")
 
 # Export colorbar showing depth scale
-export_colorbar(result, "depth_scale.png")
+export_colorbar(:turbo, info.field_range, "Z-depth (μm)", "depth_scale.png")
 ```
 
 ### Temporal Dynamics
 
 ```julia
 # Show acquisition time via frame coloring
-result = render(smld,
-                strategy = GaussianRender(),
-                color_by = :frame,
-                colormap = :twilight,        # Cyclic for temporal
-                zoom = 20,
-                filename = "temporal.png")
+(img, info) = render(smld,
+                     strategy = GaussianRender(),
+                     color_by = :frame,
+                     colormap = :twilight,       # Cyclic for temporal
+                     zoom = 20,
+                     filename = "temporal.png")
 ```

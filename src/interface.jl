@@ -449,7 +449,8 @@ function _render_dispatch(smld, target::Image2DTarget, config::RenderConfig)
     if strategy isa HistogramRender
         img = render_histogram(smld, target, color_mapping)
     elseif strategy isa GaussianRender
-        img = render_gaussian(smld, target, strategy, color_mapping)
+        img = render_gaussian(smld, target, strategy, color_mapping;
+                             clip_percentile=config.clip_percentile)
     elseif strategy isa CircleRender
         img = render_circle(smld, target, strategy, color_mapping)
     elseif strategy isa EllipseRender

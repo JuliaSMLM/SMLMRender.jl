@@ -275,36 +275,37 @@ function normalize_rgb(img::AbstractMatrix{<:Colorant})
 end
 
 """
-    apply_intensity_weighted_color(intensity, r_num, g_num, b_num; gamma=0.6)
+    apply_intensity_weighted_color(intensity, r_num, g_num, b_num; clip_percentile=0.99)
 
 Combine intensity and color numerators using intensity-weighted color algorithm.
 
-This computes the average color at each pixel (weighted by intensity) and then
-modulates by the local intensity with gamma correction for vibrant, punchy colors.
+Computes the average color at each pixel (weighted by intensity) and modulates
+by the normalized intensity for brightness. Uses the same clip-and-normalize
+approach as the intensity rendering path.
 
 # Algorithm:
-1. Average color: RGB = (r_num/S, g_num/S, b_num/S) where S = intensity
-2. Brightness: B = (S / max(S))^gamma
-3. Final: RGB * B
+1. Clip intensity at `clip_percentile` of non-zero pixels
+2. Normalize clipped intensity to [0, 1]
+3. Average color: RGB = (r_num/S, g_num/S, b_num/S) where S = original intensity
+4. Final: RGB * normalized_brightness
 
 # Arguments
 - `intensity`: Total accumulated intensity (overlap count)
 - `r_num`, `g_num`, `b_num`: Color numerators weighted by intensity
-- `gamma`: Gamma correction factor (default 0.6 for more dynamic range)
+- `clip_percentile`: Percentile of non-zero pixels for clipping (default 0.99)
 """
 function apply_intensity_weighted_color(intensity::Matrix{Float64},
                                        r_num::Matrix{Float64},
                                        g_num::Matrix{Float64},
                                        b_num::Matrix{Float64};
-                                       gamma::Float64 = 0.6)
+                                       clip_percentile::Float64 = 0.99)
     height, width = size(intensity)
     result = zeros(RGB{Float64}, height, width)
 
-    # Find max intensity for normalization
-    max_intensity = maximum(intensity)
-    if max_intensity ≈ 0.0
-        return result  # All black
-    end
+    # Clip and normalize intensity (same as intensity rendering path)
+    intensity_norm = copy(intensity)
+    clip_at_percentile(intensity_norm, clip_percentile)
+    intensity_norm = normalize_to_01(intensity_norm)
 
     # Small epsilon to avoid division by zero
     ε = 1e-6
@@ -313,13 +314,13 @@ function apply_intensity_weighted_color(intensity::Matrix{Float64},
         S = intensity[i, j]
 
         if S > ε
-            # Compute average color (intensity-weighted)
+            # Compute average color (from original, unclipped intensity)
             r_avg = r_num[i, j] / S
             g_avg = g_num[i, j] / S
             b_avg = b_num[i, j] / S
 
-            # Compute brightness modulation with gamma
-            brightness = (S / max_intensity)^gamma
+            # Brightness from clipped+normalized intensity
+            brightness = intensity_norm[i, j]
 
             # Final color: average color * brightness
             result[i, j] = RGB(r_avg * brightness,

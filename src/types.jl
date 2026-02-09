@@ -120,7 +120,7 @@ struct CircleRender <: Render2DStrategy
 end
 
 # Convenience constructor
-CircleRender(; radius_factor=2.0, line_width=1.0,
+CircleRender(; radius_factor=1.0, line_width=1.0,
              use_localization_precision=true, fixed_radius=nothing) =
     CircleRender(radius_factor, line_width, use_localization_precision, fixed_radius)
 
@@ -170,7 +170,7 @@ struct EllipseRender <: Render2DStrategy
 end
 
 # Convenience constructor
-EllipseRender(; radius_factor=2.0, line_width=1.0,
+EllipseRender(; radius_factor=1.0, line_width=1.0,
               use_localization_precision=true,
               fixed_radius_x=nothing, fixed_radius_y=nothing) =
     EllipseRender(radius_factor, line_width, use_localization_precision,

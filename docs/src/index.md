@@ -39,7 +39,7 @@ SMLMRender.jl transforms SMLM localization data from [SMLMData.jl](https://githu
 Two modes for specifying output resolution:
 
 - **`zoom`**: Renders exact camera FOV with subdivided pixels
-  - `zoom=10` with 128×128 camera → exactly 1280×1280 output
+  - `zoom=20` with 128×128 camera → exactly 2560×2560 output
   - Output range matches camera FOV exactly
   - Predictable, reproducible sizes
 
@@ -69,52 +69,67 @@ Pkg.develop(url="https://github.com/JuliaSMLM/SMLMRender.jl")
 
 ## Quick Start
 
-This tutorial simulates a small super-resolution structure and demonstrates key rendering features.
+A Siemens star test pattern — 8 filled wedges with z-depth encoded by angular position:
 
 ```@example quickstart
-using SMLMData, SMLMRender, SMLMSim, MicroscopePSFs
+using SMLMRender, SMLMData, Random
+Random.seed!(42)
 
-# Simulate a small octamer structure (16×16 pixel FOV, ~1.6μm)
-params = StaticSMLMParams(
-    density = 50.0,      # High density for clear structure
-    σ_psf = 0.13,        # 130nm PSF (typical STORM)
-    nframes = 5,         # Short acquisition
-    framerate = 20.0
-)
+# Siemens star: 16 slices (8 filled, 8 empty), z varies with angle
+n_slices = 16
+R_min, R_max = 0.1, 3.0
+cx, cy = 3.2, 3.2
+density, σ_psf = 400.0, 0.13
 
-camera = IdealCamera(16, 16, 0.1)  # 16×16 pixels, 100nm/px
-pattern = Nmer2D(n=8, d=0.5)       # Octamer, 500nm diameter
-fluor = GenericFluor(photons=2000.0, k_off=10.0, k_on=0.5)
+wedge_area = (π / n_slices) * (R_max^2 - R_min^2)
+n_per_wedge = round(Int, density * wedge_area)
 
-smld_true, smld_model, smld = simulate(params; pattern, molecule=fluor, camera)
-println("Simulated $(length(smld.emitters)) localizations")
+emitters = Emitter3DFit{Float64}[]
+for s in 0:(n_slices - 1)
+    iseven(s) || continue
+    θ_min = 2π * s / n_slices
+    θ_max = 2π * (s + 1) / n_slices
+    z = -1.0 + 2.0 * (θ_min + θ_max) / (2 * 2π)
+    for _ in 1:n_per_wedge
+        r = sqrt(rand() * (R_max^2 - R_min^2) + R_min^2)
+        θ = θ_min + rand() * (θ_max - θ_min)
+        photons = max(10.0, randexp() * 500.0)
+        σ = σ_psf / sqrt(photons)
+        push!(emitters, Emitter3DFit{Float64}(
+            cx + r*cos(θ), cy + r*sin(θ), z, photons, 10.0, σ, σ, 0.050, 50.0, 2.0;
+            frame=mod1(s+1, 20), id=length(emitters)+1))
+    end
+end
+camera = IdealCamera(64, 64, 0.1)
+smld = BasicSMLD(emitters, camera, 20, 1)
+println("$(length(smld.emitters)) localizations (Siemens star, 8 wedges)")
 ```
 
 ### Rendering Strategies
 
 ```@example quickstart
 # Histogram: Fast binning (pixelated but fast)
-hist_result = render(smld, strategy=HistogramRender(), zoom=10)
+(img_hist, info_hist) = render(smld, RenderConfig(strategy=HistogramRender(), zoom=20))
 
 # Gaussian: Smooth blobs
-gauss_result = render(smld, strategy=GaussianRender(), zoom=10)
+(img_gauss, info_gauss) = render(smld, RenderConfig(strategy=GaussianRender(), zoom=20))
 
 # Circle: Visualize localization precision (requires color_by or color)
-circle_result = render(smld, strategy=CircleRender(), color_by=:frame, zoom=20)
+(img_circle, info_circle) = render(smld, RenderConfig(strategy=CircleRender(), color_by=:frame, zoom=20))
 
-println("Histogram: $(size(hist_result.image))")
-println("Gaussian: $(size(gauss_result.image))")
-println("Circle: $(size(circle_result.image))")
+println("Histogram: $(size(img_hist))")
+println("Gaussian: $(size(img_gauss))")
+println("Circle: $(size(img_circle))")
 ```
 
 ### Color Mapping
 
 ```@example quickstart
 # Intensity-based coloring (traditional SMLM)
-intensity_result = render(smld, colormap=:inferno, zoom=10)
+(img_intensity, info_intensity) = render(smld, RenderConfig(colormap=:inferno, zoom=20))
 
 # Field-based coloring (color by photon count)
-field_result = render(smld, color_by=:photons, colormap=:viridis, zoom=10)
+(img_field, info_field) = render(smld, RenderConfig(color_by=:photons, colormap=:viridis, zoom=20))
 
 println("Rendered with intensity and field-based coloring")
 ```
@@ -127,15 +142,14 @@ println("Rendered with intensity and field-based coloring")
 ## Main Interface
 
 ```@example quickstart
-# Single-channel rendering
-result = render(smld, zoom=10)
+# Single-channel rendering returns (image, info) tuple
+(img, info) = render(smld, RenderConfig(zoom=20))
 
 # Multi-channel rendering (no Colors import needed)
-# result = render([smld1, smld2], colors=[:red, :green], zoom=10)
+# (img, info) = render([smld1, smld2], colors=[:red, :green], zoom=20)
 
 # Export utilities
-# export_colorbar(result, "colorbar.png")
-# save_image("output.png", result.image)
+# save_image("output.png", img)
 nothing # hide
 ```
 
