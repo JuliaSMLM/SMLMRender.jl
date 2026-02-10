@@ -204,6 +204,7 @@ function render_overlay(smlds::Vector, colors::Vector;
                        zoom::Union{Real, Nothing} = nothing,
                        target::Union{Image2DTarget, Nothing} = nothing,
                        normalize_each::Bool = true,
+                       clip_percentile::Union{Real, Nothing} = nothing,
                        backend::Symbol = :cpu,
                        filename::Union{String, Nothing} = nothing)
 
@@ -224,7 +225,8 @@ function render_overlay(smlds::Vector, colors::Vector;
     total_emitters = 0
     t_start = time()
     for (smld, clr) in zip(smlds, rgb_colors)
-        config = RenderConfig(strategy=strategy, color=RGB{Float64}(clr), backend=backend)
+        config = RenderConfig(strategy=strategy, color=RGB{Float64}(clr),
+                              clip_percentile=clip_percentile, backend=backend)
         (img, info) = _render_dispatch(smld, target, config)
         push!(images, img)
         total_emitters += info.n_emitters_rendered
@@ -307,6 +309,7 @@ function render(smlds::Vector;
                 zoom::Union{Real, Nothing} = nothing,
                 target::Union{Image2DTarget, Nothing} = nothing,
                 normalize_each::Bool = true,
+                clip_percentile::Union{Real, Nothing} = nothing,
                 backend::Symbol = :cpu,
                 filename::Union{String, Nothing} = nothing)
 
@@ -326,6 +329,7 @@ function render(smlds::Vector;
                          zoom=zoom,
                          target=target,
                          normalize_each=normalize_each,
+                         clip_percentile=clip_percentile,
                          backend=backend,
                          filename=filename)
 end
