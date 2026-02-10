@@ -185,7 +185,7 @@ struct RenderConfig <: AbstractSMLMConfig
     color_by::Union{Symbol, Nothing}         # Field-based coloring
     color::Union{RGB, Symbol, Nothing}       # Manual color
     categorical::Bool                        # Categorical palette (default: false)
-    clip_percentile::Float64                 # Intensity clipping (default: 0.99)
+    clip_percentile::Union{Float64, Nothing}  # Intensity clipping (default: 0.99, nothing=saturate)
     field_range::Union{Tuple{Float64,Float64}, Symbol}  # :auto or explicit
     field_clip_percentiles::Union{Tuple{Float64,Float64}, Nothing}
     backend::Symbol                          # :cpu, :cuda, :metal, :auto
@@ -260,7 +260,7 @@ Convenience interface. All keyword arguments match `RenderConfig` fields exactly
 - `categorical::Bool` - Use categorical palette for integer fields like `:id` (default: `false`)
 
 **Options:**
-- `clip_percentile::Real` - Percentile for intensity clipping (default: 0.99)
+- `clip_percentile::Union{Real, Nothing}` - Percentile for intensity clipping (default: 0.99). Use `nothing` for saturate mode (no normalization, values can exceed 1.0).
 - `field_range::Union{Tuple, Symbol}` - Value range for field coloring or `:auto` (default: `:auto`)
 - `field_clip_percentiles::Union{Tuple, Nothing}` - Percentile clipping for fields (default: `(0.01, 0.99)`)
 - `filename::Union{String, Nothing}` - Save directly to file if provided
@@ -285,6 +285,7 @@ Multi-channel rendering via dispatch on `Vector`.
 - `smlds::Vector` - Vector of SMLD datasets
 - `colors::Vector` - Vector of colors (RGB, Symbol like `:red`, or String like `"green"`)
 - `normalize_each::Bool` - Normalize each channel independently (default: `true`)
+- `clip_percentile::Union{Real, Nothing}` - Per-channel intensity clipping (default: `nothing` = saturate mode). Use `nothing` for classic two-color overlays where each localization gets full brightness and dense regions saturate to white.
 - All other kwargs same as single-channel render
 
 **Returns:** `(image, info)` tuple with overlaid channels image and combined RenderInfo

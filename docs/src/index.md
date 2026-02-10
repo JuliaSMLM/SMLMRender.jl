@@ -10,7 +10,7 @@ SMLMRender.jl transforms SMLM localization data from [SMLMData.jl](https://githu
 
 ### Rendering Strategies
 
-- **HistogramRender** - Fast binning, saturates on overlap
+- **HistogramRender** - Fast binning with percentile-normalized intensity (saturate mode via `clip_percentile=nothing`)
 - **GaussianRender** - Smooth Gaussian blobs with intensity-weighted field coloring
 - **CircleRender** - Anti-aliased circles at localization precision, saturates on overlap
 
@@ -19,7 +19,7 @@ SMLMRender.jl transforms SMLM localization data from [SMLMData.jl](https://githu
 - **Intensity-based** - Accumulate counts, apply colormap (inferno, hot, etc.)
 - **Field-based** - Color by emitter field (z-depth, photons, frame, σ_x)
   - Intensity-weighted (Gaussian): color from field, brightness from overlap
-  - Saturating (Histogram/Circles): full color, saturates where dense
+  - Percentile-normalized (Histogram): clip + normalize intensity, or saturate with `clip_percentile=nothing`
 - **Multi-channel** - Fixed colors for channel overlays
 
 ### Colormaps

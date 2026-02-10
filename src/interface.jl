@@ -127,7 +127,7 @@ function render(smld;
                 color_by::Union{Symbol, Nothing} = nothing,
                 color::Union{RGB, Symbol, Nothing} = nothing,
                 categorical::Bool = false,
-                clip_percentile::Real = 0.99,
+                clip_percentile::Union{Real, Nothing} = 0.99,
                 field_range::Union{Tuple{Real, Real}, Symbol} = :auto,
                 field_clip_percentiles::Union{Tuple{Real, Real}, Nothing} = (0.01, 0.99),
                 backend::Symbol = :cpu,
@@ -153,7 +153,7 @@ function render(smld, x_edges::AbstractVector, y_edges::AbstractVector;
                 color_by::Union{Symbol, Nothing} = nothing,
                 color::Union{RGB, Symbol, Nothing} = nothing,
                 categorical::Bool = false,
-                clip_percentile::Real = 0.99,
+                clip_percentile::Union{Real, Nothing} = 0.99,
                 field_range::Union{Tuple{Real, Real}, Symbol} = :auto,
                 field_clip_percentiles::Union{Tuple{Real, Real}, Nothing} = (0.01, 0.99),
                 backend::Symbol = :cpu,
@@ -204,6 +204,7 @@ function render_overlay(smlds::Vector, colors::Vector;
                        zoom::Union{Real, Nothing} = nothing,
                        target::Union{Image2DTarget, Nothing} = nothing,
                        normalize_each::Bool = true,
+                       clip_percentile::Union{Real, Nothing} = nothing,
                        backend::Symbol = :cpu,
                        filename::Union{String, Nothing} = nothing)
 
@@ -224,7 +225,8 @@ function render_overlay(smlds::Vector, colors::Vector;
     total_emitters = 0
     t_start = time()
     for (smld, clr) in zip(smlds, rgb_colors)
-        config = RenderConfig(strategy=strategy, color=RGB{Float64}(clr), backend=backend)
+        config = RenderConfig(strategy=strategy, color=RGB{Float64}(clr),
+                              clip_percentile=clip_percentile, backend=backend)
         (img, info) = _render_dispatch(smld, target, config)
         push!(images, img)
         total_emitters += info.n_emitters_rendered
@@ -307,6 +309,7 @@ function render(smlds::Vector;
                 zoom::Union{Real, Nothing} = nothing,
                 target::Union{Image2DTarget, Nothing} = nothing,
                 normalize_each::Bool = true,
+                clip_percentile::Union{Real, Nothing} = nothing,
                 backend::Symbol = :cpu,
                 filename::Union{String, Nothing} = nothing)
 
@@ -326,6 +329,7 @@ function render(smlds::Vector;
                          zoom=zoom,
                          target=target,
                          normalize_each=normalize_each,
+                         clip_percentile=clip_percentile,
                          backend=backend,
                          filename=filename)
 end
@@ -366,15 +370,15 @@ function _determine_color_mapping(config::RenderConfig)
                                     field_clip_percentiles)
         end
     elseif colormap !== nothing
-        # Intensity-based coloring
-        return IntensityColorMapping(colormap, clip_percentile)
+        # Intensity-based coloring (always needs a percentile for colormap normalization)
+        return IntensityColorMapping(colormap, something(clip_percentile, 0.99))
     elseif color !== nothing
         # Manual color - parse Symbol to RGB if needed
         rgb = color isa Symbol ? parse(Colorant, string(color)) : color
         return ManualColorMapping(RGB{Float64}(rgb))
     else
         # Default: intensity with inferno
-        return IntensityColorMapping(:inferno, clip_percentile)
+        return IntensityColorMapping(:inferno, something(clip_percentile, 0.99))
     end
 end
 
@@ -447,10 +451,11 @@ function _render_dispatch(smld, target::Image2DTarget, config::RenderConfig)
     # Dispatch on strategy type
     strategy = config.strategy
     if strategy isa HistogramRender
-        img = render_histogram(smld, target, color_mapping)
+        img = render_histogram(smld, target, color_mapping;
+                              clip_percentile=config.clip_percentile)
     elseif strategy isa GaussianRender
         img = render_gaussian(smld, target, strategy, color_mapping;
-                             clip_percentile=config.clip_percentile)
+                             clip_percentile=something(config.clip_percentile, 0.99))
     elseif strategy isa CircleRender
         img = render_circle(smld, target, strategy, color_mapping)
     elseif strategy isa EllipseRender

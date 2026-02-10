@@ -1,6 +1,6 @@
 name = "SMLMRender"
 uuid = "d945b928-cd23-4282-89d9-fc086b52682d"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["klidke@unm.edu"]
 
 [deps]

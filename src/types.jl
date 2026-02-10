@@ -431,7 +431,7 @@ Flat rendering configuration. Fields correspond 1:1 with `render()` keyword argu
 - `color_by::Union{Symbol, Nothing}`: Field for field-based coloring (`:z`, `:photons`, etc.)
 - `color::Union{RGB, Symbol, Nothing}`: Manual color
 - `categorical::Bool`: Use categorical palette for integer fields (default: `false`)
-- `clip_percentile::Float64`: Intensity clipping percentile (default: `0.99`)
+- `clip_percentile::Union{Float64, Nothing}`: Intensity clipping percentile (default: `0.99`). Use `nothing` for saturate mode (no normalization, values can exceed 1.0).
 - `field_range::Union{Tuple{Float64,Float64}, Symbol}`: Value range or `:auto`
 - `field_clip_percentiles::Union{Tuple{Float64,Float64}, Nothing}`: Percentile clipping
 - `backend::Symbol`: Computation backend (default: `:cpu`)
@@ -447,7 +447,7 @@ struct RenderConfig <: AbstractSMLMConfig
     color_by::Union{Symbol, Nothing}
     color::Union{RGB, Symbol, Nothing}
     categorical::Bool
-    clip_percentile::Float64
+    clip_percentile::Union{Float64, Nothing}
     field_range::Union{Tuple{Float64, Float64}, Symbol}
     field_clip_percentiles::Union{Tuple{Float64, Float64}, Nothing}
     backend::Symbol
@@ -464,7 +464,7 @@ function RenderConfig(;
     color_by::Union{Symbol, Nothing} = nothing,
     color::Union{RGB, Symbol, Nothing} = nothing,
     categorical::Bool = false,
-    clip_percentile::Real = 0.99,
+    clip_percentile::Union{Real, Nothing} = 0.99,
     field_range::Union{Tuple{Real, Real}, Symbol} = :auto,
     field_clip_percentiles::Union{Tuple{Real, Real}, Nothing} = (0.01, 0.99),
     backend::Symbol = :cpu,
@@ -480,7 +480,7 @@ function RenderConfig(;
         color_by,
         color,
         categorical,
-        Float64(clip_percentile),
+        clip_percentile === nothing ? nothing : Float64(clip_percentile),
         field_range isa Tuple ? (Float64(field_range[1]), Float64(field_range[2])) : field_range,
         field_clip_percentiles === nothing ? nothing :
             (Float64(field_clip_percentiles[1]), Float64(field_clip_percentiles[2])),
