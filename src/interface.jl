@@ -204,7 +204,7 @@ function render_overlay(smlds::Vector, colors::Vector;
                        zoom::Union{Real, Nothing} = nothing,
                        target::Union{Image2DTarget, Nothing} = nothing,
                        normalize_each::Bool = true,
-                       clip_percentile::Union{Real, Nothing} = nothing,
+                       clip_percentile::Union{Real, Nothing} = 0.99,
                        backend::Symbol = :cpu,
                        filename::Union{String, Nothing} = nothing)
 
@@ -230,6 +230,16 @@ function render_overlay(smlds::Vector, colors::Vector;
         (img, info) = _render_dispatch(smld, target, config)
         push!(images, img)
         total_emitters += info.n_emitters_rendered
+    end
+
+    # Apply per-channel percentile clipping before normalization
+    # This matches single-channel IntensityColorMapping behavior where clip_at_percentile
+    # is applied before normalize_to_01. Without this, overlay channels get max-normalized
+    # which loses contrast compared to single-channel renders.
+    if clip_percentile !== nothing && !(strategy isa CircleRender || strategy isa EllipseRender)
+        for i in eachindex(images)
+            images[i] = _clip_rgb_channels(images[i], clip_percentile)
+        end
     end
 
     # Normalize each independently if requested
@@ -309,7 +319,7 @@ function render(smlds::Vector;
                 zoom::Union{Real, Nothing} = nothing,
                 target::Union{Image2DTarget, Nothing} = nothing,
                 normalize_each::Bool = true,
-                clip_percentile::Union{Real, Nothing} = nothing,
+                clip_percentile::Union{Real, Nothing} = 0.99,
                 backend::Symbol = :cpu,
                 filename::Union{String, Nothing} = nothing)
 
@@ -480,6 +490,25 @@ function _render_dispatch(smld, target::Image2DTarget, config::RenderConfig)
     )
 
     return (img, info)
+end
+
+"""
+    _clip_rgb_channels(img::Matrix{RGB{Float64}}, percentile::Real)
+
+Apply percentile clipping to each non-zero RGB channel independently.
+Extracts R/G/B as separate matrices, clips each via `clip_at_percentile`,
+and reassembles. Channels that are all zero are left unchanged.
+"""
+function _clip_rgb_channels(img::Matrix{RGB{Float64}}, percentile::Real)
+    r = [c.r for c in img]
+    g = [c.g for c in img]
+    b = [c.b for c in img]
+
+    any(x -> x > 0, r) && clip_at_percentile(r, percentile)
+    any(x -> x > 0, g) && clip_at_percentile(g, percentile)
+    any(x -> x > 0, b) && clip_at_percentile(b, percentile)
+
+    return RGB{Float64}.(r, g, b)
 end
 
 """
