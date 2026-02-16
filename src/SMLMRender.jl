@@ -24,6 +24,7 @@ using ImageIO
 using Reexport
 @reexport using SMLMData
 using SMLMData: AbstractSMLMConfig, AbstractSMLMInfo
+using ScaleBar
 
 # Core types
 include("types.jl")

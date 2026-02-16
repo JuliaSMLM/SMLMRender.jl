@@ -161,6 +161,51 @@ end
         @test info.color_mode == :manual
     end
 
+    @testset "Overlay clip_percentile applies per-channel" begin
+        # Test _clip_rgb_channels directly: create an RGB image with a known outlier
+        # and verify clipping reduces its value
+        using SMLMRender: _clip_rgb_channels
+
+        test_img = zeros(RGB{Float64}, 10, 10)
+        # Fill with moderate values in red channel
+        for i in 1:9, j in 1:9
+            test_img[i, j] = RGB(0.5, 0.0, 0.0)
+        end
+        # Add bright outlier in red channel
+        test_img[10, 10] = RGB(10.0, 0.0, 0.0)
+
+        clipped = _clip_rgb_channels(copy(test_img), 0.95)
+
+        # The outlier red value should be reduced by clipping
+        @test clipped[10, 10].r < test_img[10, 10].r
+        # Non-outlier red values should be unchanged (below percentile)
+        @test clipped[1, 1].r == test_img[1, 1].r
+        # Green channel (all zero) should stay zero
+        @test maximum(c.g for c in clipped) == 0.0
+
+        # Integration test: overlay with histogram (which already clips internally)
+        # just verifies the overlay path accepts clip_percentile without error
+        camera = IdealCamera(64, 64, 100.0)
+        emitters1 = [
+            make_emitter2d(3.2, 3.2, 1000.0, 10.0, 0.02, 0.02, 50.0, 2.0; frame=1, id=1),
+        ]
+        emitters2 = [
+            make_emitter2d(3.5, 3.5, 1000.0, 10.0, 0.02, 0.02, 50.0, 2.0; frame=1, id=2),
+        ]
+        smld1 = BasicSMLD(emitters1, camera, 1, 1)
+        smld2 = BasicSMLD(emitters2, camera, 1, 1)
+
+        # Default clip_percentile=0.99 should work
+        (img, info) = render([smld1, smld2], colors=[:red, :green], zoom=10)
+        @test img isa Matrix{RGB{Float64}}
+        @test info.color_mode == :manual
+
+        # Explicit clip_percentile=nothing disables overlay clipping
+        (img2, _) = render([smld1, smld2], colors=[:red, :green], zoom=10,
+                           clip_percentile=nothing)
+        @test img2 isa Matrix{RGB{Float64}}
+    end
+
     @testset "Primary form render(smld, target, config)" begin
         camera = IdealCamera(32, 32, 100.0)
         emitters = [make_emitter2d(1.6, 1.6, 1000.0, 10.0, 0.02, 0.02, 50.0, 2.0; id=1)]
@@ -184,6 +229,53 @@ end
         (img2, info2) = render(smld, config2)
         @test img2 isa Matrix{RGB{Float64}}
         @test info2.strategy == :gaussian
+    end
+
+    @testset "Scalebar integration" begin
+        camera = IdealCamera(64, 64, 100.0)
+        emitters = [
+            make_emitter2d(3.2, 3.2, 1000.0, 10.0, 0.02, 0.02, 50.0, 2.0; frame=1, id=1),
+            make_emitter2d(3.5, 3.5, 1500.0, 12.0, 0.018, 0.018, 60.0, 2.5; frame=2, id=2),
+        ]
+        smld = BasicSMLD(emitters, camera, 2, 1)
+
+        # scalebar=false (default) should not modify image
+        (img_no_sb, info) = render(smld, zoom=10)
+        @test img_no_sb isa Matrix{RGB{Float64}}
+        @test info.scalebar_length_um === nothing
+
+        # scalebar=true with auto length
+        (img_sb, info_sb) = render(smld, zoom=10, scalebar=true)
+        @test img_sb isa Matrix{RGB{Float64}}
+        @test size(img_sb) == size(img_no_sb)
+        # Image should differ (scalebar drawn on it)
+        @test img_sb != img_no_sb
+        # Auto-calculated length should be reported
+        @test info_sb.scalebar_length_um isa Float64
+        @test info_sb.scalebar_length_um > 0
+
+        # scalebar=true with explicit length and options
+        # Note: camera pixel size is 100μm, zoom=10 → 10μm/pixel output
+        (img_sb2, info_sb2) = render(smld, zoom=10, scalebar=true,
+                              scalebar_length=500.0, scalebar_position=:tl,
+                              scalebar_color=:black)
+        @test img_sb2 isa Matrix{RGB{Float64}}
+        @test size(img_sb2) == size(img_no_sb)
+        @test info_sb2.scalebar_length_um == 500.0
+
+        # RenderConfig form
+        config = RenderConfig(zoom=10, scalebar=true, scalebar_length=200.0)
+        (img_cfg, info_cfg) = render(smld, config)
+        @test img_cfg isa Matrix{RGB{Float64}}
+        @test info_cfg.scalebar_length_um == 200.0
+
+        # Overlay with scalebar
+        emitters2 = [make_emitter2d(3.8, 3.2, 800.0, 8.0, 0.025, 0.025, 40.0, 1.5; frame=1, id=3)]
+        smld2 = BasicSMLD(emitters2, camera, 1, 1)
+        (img_ov, info_ov) = render([smld, smld2], colors=[:red, :green], zoom=10, scalebar=true)
+        @test img_ov isa Matrix{RGB{Float64}}
+        @test info_ov.color_mode == :manual
+        @test info_ov.scalebar_length_um isa Float64
     end
 
     @testset "Tuple unpacking patterns" begin
