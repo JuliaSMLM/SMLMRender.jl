@@ -231,6 +231,53 @@ end
         @test info2.strategy == :gaussian
     end
 
+    @testset "Scalebar integration" begin
+        camera = IdealCamera(64, 64, 100.0)
+        emitters = [
+            make_emitter2d(3.2, 3.2, 1000.0, 10.0, 0.02, 0.02, 50.0, 2.0; frame=1, id=1),
+            make_emitter2d(3.5, 3.5, 1500.0, 12.0, 0.018, 0.018, 60.0, 2.5; frame=2, id=2),
+        ]
+        smld = BasicSMLD(emitters, camera, 2, 1)
+
+        # scalebar=false (default) should not modify image
+        (img_no_sb, info) = render(smld, zoom=10)
+        @test img_no_sb isa Matrix{RGB{Float64}}
+        @test info.scalebar_length_um === nothing
+
+        # scalebar=true with auto length
+        (img_sb, info_sb) = render(smld, zoom=10, scalebar=true)
+        @test img_sb isa Matrix{RGB{Float64}}
+        @test size(img_sb) == size(img_no_sb)
+        # Image should differ (scalebar drawn on it)
+        @test img_sb != img_no_sb
+        # Auto-calculated length should be reported
+        @test info_sb.scalebar_length_um isa Float64
+        @test info_sb.scalebar_length_um > 0
+
+        # scalebar=true with explicit length and options
+        # Note: camera pixel size is 100μm, zoom=10 → 10μm/pixel output
+        (img_sb2, info_sb2) = render(smld, zoom=10, scalebar=true,
+                              scalebar_length=500.0, scalebar_position=:tl,
+                              scalebar_color=:black)
+        @test img_sb2 isa Matrix{RGB{Float64}}
+        @test size(img_sb2) == size(img_no_sb)
+        @test info_sb2.scalebar_length_um == 500.0
+
+        # RenderConfig form
+        config = RenderConfig(zoom=10, scalebar=true, scalebar_length=200.0)
+        (img_cfg, info_cfg) = render(smld, config)
+        @test img_cfg isa Matrix{RGB{Float64}}
+        @test info_cfg.scalebar_length_um == 200.0
+
+        # Overlay with scalebar
+        emitters2 = [make_emitter2d(3.8, 3.2, 800.0, 8.0, 0.025, 0.025, 40.0, 1.5; frame=1, id=3)]
+        smld2 = BasicSMLD(emitters2, camera, 1, 1)
+        (img_ov, info_ov) = render([smld, smld2], colors=[:red, :green], zoom=10, scalebar=true)
+        @test img_ov isa Matrix{RGB{Float64}}
+        @test info_ov.color_mode == :manual
+        @test info_ov.scalebar_length_um isa Float64
+    end
+
     @testset "Tuple unpacking patterns" begin
         camera = IdealCamera(32, 32, 100.0)
         emitters = [make_emitter2d(1.6, 1.6, 1000.0, 10.0, 0.02, 0.02, 50.0, 2.0; id=1)]

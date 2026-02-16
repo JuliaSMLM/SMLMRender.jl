@@ -54,6 +54,18 @@ function render(smld, config::RenderConfig)
 
     (img, info) = render(smld, target, config)
 
+    # Apply scalebar if requested
+    if config.scalebar
+        (img, sb_length) = _apply_scalebar(img, info; scalebar_length=config.scalebar_length,
+                                           scalebar_position=config.scalebar_position,
+                                           scalebar_color=config.scalebar_color)
+        info = RenderInfo(elapsed_s=info.elapsed_s, backend=info.backend,
+                          device_id=info.device_id, n_emitters_rendered=info.n_emitters_rendered,
+                          output_size=info.output_size, pixel_size_nm=info.pixel_size_nm,
+                          strategy=info.strategy, color_mode=info.color_mode,
+                          field_range=info.field_range, scalebar_length_um=sb_length)
+    end
+
     # Save to file if requested
     if config.filename !== nothing
         save_image(config.filename, img)
@@ -98,6 +110,10 @@ Convenience rendering interface. All keyword arguments match `RenderConfig` fiel
 - `field_range`: Value range or :auto (default: :auto)
 - `field_clip_percentiles`: Percentile clipping tuple (default: (0.01, 0.99))
 - `filename`: Save directly to file if provided
+- `scalebar`: Enable scale bar overlay (default: false)
+- `scalebar_length`: Physical length in μm (nothing = auto)
+- `scalebar_position`: Corner position (:br, :bl, :tr, :tl)
+- `scalebar_color`: Bar color (:white or :black)
 
 # Examples
 ```julia
@@ -131,13 +147,18 @@ function render(smld;
                 field_range::Union{Tuple{Real, Real}, Symbol} = :auto,
                 field_clip_percentiles::Union{Tuple{Real, Real}, Nothing} = (0.01, 0.99),
                 backend::Symbol = :cpu,
-                filename::Union{String, Nothing} = nothing)
+                filename::Union{String, Nothing} = nothing,
+                scalebar::Bool = false,
+                scalebar_length::Union{Real, Nothing} = nothing,
+                scalebar_position::Symbol = :br,
+                scalebar_color::Symbol = :white)
 
     config = RenderConfig(;
         strategy, pixel_size, zoom, roi, target,
         colormap, color_by, color, categorical,
         clip_percentile, field_range, field_clip_percentiles,
-        backend, filename
+        backend, filename,
+        scalebar, scalebar_length, scalebar_position, scalebar_color
     )
     return render(smld, config)
 end
@@ -206,7 +227,11 @@ function render_overlay(smlds::Vector, colors::Vector;
                        normalize_each::Bool = true,
                        clip_percentile::Union{Real, Nothing} = 0.99,
                        backend::Symbol = :cpu,
-                       filename::Union{String, Nothing} = nothing)
+                       filename::Union{String, Nothing} = nothing,
+                       scalebar::Bool = false,
+                       scalebar_length::Union{Real, Nothing} = nothing,
+                       scalebar_position::Symbol = :br,
+                       scalebar_color::Symbol = :white)
 
     @assert length(smlds) == length(colors) "Number of datasets must match number of colors"
     @assert length(smlds) > 0 "Must provide at least one dataset"
@@ -281,6 +306,18 @@ function render_overlay(smlds::Vector, colors::Vector;
         color_mode = :manual  # Overlay uses manual colors
     )
 
+    # Apply scalebar if requested
+    if scalebar
+        (combined, sb_length) = _apply_scalebar(combined, info; scalebar_length=scalebar_length,
+                                                scalebar_position=scalebar_position,
+                                                scalebar_color=scalebar_color)
+        info = RenderInfo(elapsed_s=info.elapsed_s, backend=info.backend,
+                          device_id=info.device_id, n_emitters_rendered=info.n_emitters_rendered,
+                          output_size=info.output_size, pixel_size_nm=info.pixel_size_nm,
+                          strategy=info.strategy, color_mode=info.color_mode,
+                          field_range=info.field_range, scalebar_length_um=sb_length)
+    end
+
     # Save to file if requested
     if filename !== nothing
         save_image(filename, combined)
@@ -321,7 +358,11 @@ function render(smlds::Vector;
                 normalize_each::Bool = true,
                 clip_percentile::Union{Real, Nothing} = 0.99,
                 backend::Symbol = :cpu,
-                filename::Union{String, Nothing} = nothing)
+                filename::Union{String, Nothing} = nothing,
+                scalebar::Bool = false,
+                scalebar_length::Union{Real, Nothing} = nothing,
+                scalebar_position::Symbol = :br,
+                scalebar_color::Symbol = :white)
 
     # Convert color names to RGB (user doesn't need to import Colors)
     rgb_colors = map(colors) do c
@@ -341,7 +382,11 @@ function render(smlds::Vector;
                          normalize_each=normalize_each,
                          clip_percentile=clip_percentile,
                          backend=backend,
-                         filename=filename)
+                         filename=filename,
+                         scalebar=scalebar,
+                         scalebar_length=scalebar_length,
+                         scalebar_position=scalebar_position,
+                         scalebar_color=scalebar_color)
 end
 
 # ============================================================================
@@ -509,6 +554,29 @@ function _clip_rgb_channels(img::Matrix{RGB{Float64}}, percentile::Real)
     any(x -> x > 0, b) && clip_at_percentile(b, percentile)
 
     return RGB{Float64}.(r, g, b)
+end
+
+"""
+    _apply_scalebar(img, info::RenderInfo; scalebar_length, scalebar_position, scalebar_color)
+
+Apply a scale bar to a rendered image using ScaleBar.jl.
+Converts pixel_size_nm to μm for ScaleBar's pixel_size parameter.
+"""
+function _apply_scalebar(img::Matrix{RGB{Float64}}, info::RenderInfo;
+                         scalebar_length::Union{Real, Nothing} = nothing,
+                         scalebar_position::Symbol = :br,
+                         scalebar_color::Symbol = :white)
+    pixel_size_um = info.pixel_size_nm / 1000.0
+    sb_kwargs = Dict{Symbol,Any}(
+        :position => scalebar_position,
+        :color => scalebar_color,
+        :units => "μm",
+    )
+    if scalebar_length !== nothing
+        sb_kwargs[:physical_length] = Float64(scalebar_length)
+    end
+    result = ScaleBar.scalebar(img, pixel_size_um; sb_kwargs...)
+    return (result.image, Float64(result.physical_length))
 end
 
 """

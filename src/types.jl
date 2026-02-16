@@ -436,6 +436,10 @@ Flat rendering configuration. Fields correspond 1:1 with `render()` keyword argu
 - `field_clip_percentiles::Union{Tuple{Float64,Float64}, Nothing}`: Percentile clipping
 - `backend::Symbol`: Computation backend (default: `:cpu`)
 - `filename::Union{String, Nothing}`: Save to file if provided
+- `scalebar::Bool`: Enable scale bar overlay (default: `false`)
+- `scalebar_length::Union{Float64, Nothing}`: Physical length in μm (`nothing` = auto)
+- `scalebar_position::Symbol`: Corner position (`:br`, `:bl`, `:tr`, `:tl`)
+- `scalebar_color::Symbol`: Bar color (`:white` or `:black`)
 """
 struct RenderConfig <: AbstractSMLMConfig
     strategy::RenderingStrategy
@@ -452,6 +456,10 @@ struct RenderConfig <: AbstractSMLMConfig
     field_clip_percentiles::Union{Tuple{Float64, Float64}, Nothing}
     backend::Symbol
     filename::Union{String, Nothing}
+    scalebar::Bool
+    scalebar_length::Union{Float64, Nothing}
+    scalebar_position::Symbol
+    scalebar_color::Symbol
 end
 
 function RenderConfig(;
@@ -468,7 +476,11 @@ function RenderConfig(;
     field_range::Union{Tuple{Real, Real}, Symbol} = :auto,
     field_clip_percentiles::Union{Tuple{Real, Real}, Nothing} = (0.01, 0.99),
     backend::Symbol = :cpu,
-    filename::Union{String, Nothing} = nothing)
+    filename::Union{String, Nothing} = nothing,
+    scalebar::Bool = false,
+    scalebar_length::Union{Real, Nothing} = nothing,
+    scalebar_position::Symbol = :br,
+    scalebar_color::Symbol = :white)
 
     RenderConfig(
         strategy,
@@ -485,7 +497,11 @@ function RenderConfig(;
         field_clip_percentiles === nothing ? nothing :
             (Float64(field_clip_percentiles[1]), Float64(field_clip_percentiles[2])),
         backend,
-        filename
+        filename,
+        scalebar,
+        scalebar_length === nothing ? nothing : Float64(scalebar_length),
+        scalebar_position,
+        scalebar_color
     )
 end
 
@@ -510,6 +526,7 @@ Metadata from a render operation. Follows ecosystem convention for info structs.
 - `strategy::Symbol`: Rendering strategy used (:gaussian, :histogram, :circle, :ellipse)
 - `color_mode::Symbol`: Color mapping mode (:intensity, :field, :categorical, :manual, :grayscale)
 - `field_range::Union{Nothing, Tuple{Float64,Float64}}`: Value range for colorbar (field/categorical modes)
+- `scalebar_length_um::Union{Nothing, Float64}`: Physical length of scale bar in μm (`nothing` if no scalebar)
 """
 struct RenderInfo <: AbstractSMLMInfo
     # Common fields (ecosystem convention)
@@ -524,6 +541,7 @@ struct RenderInfo <: AbstractSMLMInfo
     strategy::Symbol
     color_mode::Symbol
     field_range::Union{Nothing, Tuple{Float64,Float64}}
+    scalebar_length_um::Union{Nothing, Float64}
 end
 
 # Helper constructor for building RenderInfo from render context
@@ -536,10 +554,12 @@ function RenderInfo(;
     pixel_size_nm::Float64,
     strategy::Symbol,
     color_mode::Symbol,
-    field_range::Union{Nothing, Tuple{Float64,Float64}} = nothing
+    field_range::Union{Nothing, Tuple{Float64,Float64}} = nothing,
+    scalebar_length_um::Union{Nothing, Float64} = nothing
 )
     RenderInfo(elapsed_s, backend, device_id, n_emitters_rendered,
-               output_size, pixel_size_nm, strategy, color_mode, field_range)
+               output_size, pixel_size_nm, strategy, color_mode, field_range,
+               scalebar_length_um)
 end
 
 """
