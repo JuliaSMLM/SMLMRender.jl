@@ -69,6 +69,7 @@ function render_histogram_field(smld, target::Image2DTarget,
                                 clip_percentile::Union{Float64, Nothing}=0.99)
     # Determine value range and frame_offsets (for :absolute_frame support)
     value_range, frame_offsets = prepare_field_range(smld, mapping)
+    value_range = value_range::Tuple{Float64, Float64}
 
     # Accumulate intensity and field values
     intensity = zeros(Float64, target.height, target.width)
@@ -103,7 +104,7 @@ function render_histogram_field(smld, target::Image2DTarget,
 
     # Map field values to colors
     result = zeros(RGB{Float64}, target.height, target.width)
-    cmap = get_colormap(mapping.colormap)
+    lut = get_colormap_lut(mapping.colormap)
     min_val, max_val = value_range
 
     for i in 1:target.height, j in 1:target.width
@@ -116,7 +117,7 @@ function render_histogram_field(smld, target::Image2DTarget,
             end
 
             # Get color from colormap
-            color = get(cmap, normalized)
+            color = colormap_lookup(lut, normalized)
 
             # Apply brightness
             if clip_percentile !== nothing

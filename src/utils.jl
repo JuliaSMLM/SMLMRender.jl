@@ -265,14 +265,29 @@ function clip_at_percentile(img::Matrix{T}, percentile::Real) where T<:Real
         return maximum(img)
     end
 
-    # Use only non-zero pixels for percentile calculation
-    nonzero = filter(x -> x > 0, vec(img))
-    if isempty(nonzero)
+    # Count non-zero pixels and collect them without allocating via filter(vec(...))
+    n_nonzero = 0
+    @inbounds for v in img
+        n_nonzero += (v > 0)
+    end
+    if n_nonzero == 0
         return zero(T)
     end
 
+    # Collect non-zero values into pre-sized buffer
+    nonzero = Vector{T}(undef, n_nonzero)
+    idx = 0
+    @inbounds for v in img
+        if v > 0
+            idx += 1
+            nonzero[idx] = v
+        end
+    end
+
     clip_val = quantile(nonzero, percentile)
-    img .= min.(img, clip_val)
+    @inbounds for i in eachindex(img)
+        img[i] = min(img[i], clip_val)
+    end
     return clip_val
 end
 
@@ -289,7 +304,12 @@ function normalize_to_01(img::Matrix{T}) where T<:Real
         return fill(T(0.5), size(img))
     end
 
-    return (img .- min_val) ./ (max_val - min_val)
+    scale = one(T) / (max_val - min_val)
+    result = similar(img)
+    @inbounds for i in eachindex(img)
+        result[i] = (img[i] - min_val) * scale
+    end
+    return result
 end
 
 """

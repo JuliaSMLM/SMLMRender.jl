@@ -51,6 +51,10 @@ function render_ellipse_field(smld, target::Image2DTarget,
 
     # Determine value range and frame_offsets (for :absolute_frame support)
     value_range, frame_offsets = prepare_field_range(smld, mapping)
+    value_range = value_range::Tuple{Float64, Float64}
+
+    # Pre-build concrete LUT once for allocation-free per-emitter lookups
+    lut = get_colormap_lut(mapping.colormap)
 
     for emitter in smld.emitters
         # Get ellipse parameters (radii and rotation)
@@ -63,7 +67,7 @@ function render_ellipse_field(smld, target::Image2DTarget,
 
         # Get color
         color = get_emitter_color(emitter, mapping; value_range=value_range,
-                                  frame_offsets=frame_offsets)
+                                  frame_offsets=frame_offsets, lut=lut)
 
         # Draw ellipse
         draw_ellipse_outline!(result, emitter, target, radius_x_nm, radius_y_nm, θ,
@@ -156,8 +160,8 @@ function get_ellipse_params(emitter, strategy::EllipseRender)
         end
     else
         # Use fixed radii
-        radius_x_nm = strategy.fixed_radius_x * strategy.radius_factor
-        radius_y_nm = strategy.fixed_radius_y * strategy.radius_factor
+        radius_x_nm = Float64(strategy.fixed_radius_x::Float64) * strategy.radius_factor
+        radius_y_nm = Float64(strategy.fixed_radius_y::Float64) * strategy.radius_factor
         θ = 0.0
     end
 
