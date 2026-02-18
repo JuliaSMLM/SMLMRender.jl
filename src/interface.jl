@@ -490,9 +490,10 @@ function _render_dispatch(smld, target::Image2DTarget, config::RenderConfig)
     color_mapping = _determine_color_mapping(config)
 
     # Extract field value range if using field-based coloring (for colorbar metadata)
-    field_value_range = nothing
+    field_value_range::Union{Nothing, Tuple{Float64, Float64}} = nothing
     if color_mapping isa FieldColorMapping
-        field_value_range, _ = prepare_field_range(smld, color_mapping)
+        _range, _ = prepare_field_range(smld, color_mapping)
+        field_value_range = _range::Tuple{Float64, Float64}
     elseif color_mapping isa CategoricalColorMapping
         field = color_mapping.field
         if hasproperty(smld.emitters, field)
@@ -545,15 +546,26 @@ Extracts R/G/B as separate matrices, clips each via `clip_at_percentile`,
 and reassembles. Channels that are all zero are left unchanged.
 """
 function _clip_rgb_channels(img::Matrix{RGB{Float64}}, percentile::Real)
-    r = [c.r for c in img]
-    g = [c.g for c in img]
-    b = [c.b for c in img]
+    # Extract channels into pre-allocated matrices (one at a time would save
+    # peak memory, but we need all three to reassemble)
+    r = Matrix{Float64}(undef, size(img))
+    g = Matrix{Float64}(undef, size(img))
+    b = Matrix{Float64}(undef, size(img))
+    @inbounds for i in eachindex(img)
+        r[i] = img[i].r
+        g[i] = img[i].g
+        b[i] = img[i].b
+    end
 
     any(x -> x > 0, r) && clip_at_percentile(r, percentile)
     any(x -> x > 0, g) && clip_at_percentile(g, percentile)
     any(x -> x > 0, b) && clip_at_percentile(b, percentile)
 
-    return RGB{Float64}.(r, g, b)
+    result = Matrix{RGB{Float64}}(undef, size(img))
+    @inbounds for i in eachindex(r)
+        result[i] = RGB{Float64}(r[i], g[i], b[i])
+    end
+    return result
 end
 
 """

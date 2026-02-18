@@ -91,6 +91,10 @@ function render_gaussian_field(smld, target::Image2DTarget,
 
     # Determine value range and frame_offsets (for :absolute_frame support)
     value_range, frame_offsets = prepare_field_range(smld, mapping)
+    value_range = value_range::Tuple{Float64, Float64}
+
+    # Pre-build concrete LUT once for allocation-free per-emitter lookups
+    lut = get_colormap_lut(mapping.colormap)
 
     for emitter in smld.emitters
         # Get covariance values
@@ -102,7 +106,7 @@ function render_gaussian_field(smld, target::Image2DTarget,
 
         # Get color for this emitter
         color = get_emitter_color(emitter, mapping; value_range=value_range,
-                                  frame_offsets=frame_offsets)
+                                  frame_offsets=frame_offsets, lut=lut)
 
         # Render blob, accumulating both intensity and color
         render_gaussian_blob_weighted!(intensity, r_num, g_num, b_num,
@@ -228,8 +232,8 @@ function get_emitter_sigma(emitter, strategy::GaussianRender)
         sigma_y = emitter.σ_y * 1000.0
     else
         # Use fixed sigma
-        sigma_x = strategy.fixed_sigma
-        sigma_y = strategy.fixed_sigma
+        sigma_x = Float64(strategy.fixed_sigma::Float64)
+        sigma_y = sigma_x
     end
 
     return (sigma_x, sigma_y)
@@ -257,8 +261,9 @@ function get_emitter_covariance(emitter, strategy::GaussianRender)
         end
     else
         # Use fixed sigma, no covariance
-        sigma_x = strategy.fixed_sigma
-        sigma_y = strategy.fixed_sigma
+        # Use Float64()::Float64 to eliminate Union{Nothing, Float64} from return type
+        sigma_x = Float64(strategy.fixed_sigma::Float64)
+        sigma_y = sigma_x
         sigma_xy = 0.0
     end
 

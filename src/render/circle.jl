@@ -51,6 +51,10 @@ function render_circle_field(smld, target::Image2DTarget,
 
     # Determine value range and frame_offsets (for :absolute_frame support)
     value_range, frame_offsets = prepare_field_range(smld, mapping)
+    value_range = value_range::Tuple{Float64, Float64}
+
+    # Pre-build concrete LUT once for allocation-free per-emitter lookups
+    lut = get_colormap_lut(mapping.colormap)
 
     for emitter in smld.emitters
         # Get radius
@@ -62,7 +66,7 @@ function render_circle_field(smld, target::Image2DTarget,
 
         # Get color
         color = get_emitter_color(emitter, mapping; value_range=value_range,
-                                  frame_offsets=frame_offsets)
+                                  frame_offsets=frame_offsets, lut=lut)
 
         # Draw circle
         draw_circle_outline!(result, emitter, target, radius_nm,
@@ -140,7 +144,7 @@ function get_emitter_radius(emitter, strategy::CircleRender)
         radius_nm = avg_sigma_um * strategy.radius_factor * 1000.0
     else
         # Use fixed radius
-        radius_nm = strategy.fixed_radius * strategy.radius_factor
+        radius_nm = Float64(strategy.fixed_radius::Float64) * strategy.radius_factor
     end
 
     return radius_nm

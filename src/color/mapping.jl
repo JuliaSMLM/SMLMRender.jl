@@ -17,6 +17,41 @@ function get_colormap(name::Symbol)
 end
 
 """
+    get_colormap_lut(name::Symbol) -> Vector{RGB{Float64}}
+
+Get a concrete-typed color lookup table from a ColorScheme.
+
+ColorScheme stores colors as abstract `Colorant`, causing type instability and
+heap allocations in inner loops. This converts to `Vector{RGB{Float64}}` once
+for allocation-free interpolation.
+"""
+function get_colormap_lut(name::Symbol)
+    cmap = get_colormap(name)
+    return RGB{Float64}[RGB{Float64}(c) for c in cmap.colors]
+end
+
+"""
+    colormap_lookup(lut::Vector{RGB{Float64}}, x::Float64) -> RGB{Float64}
+
+Linearly interpolate a concrete color LUT at position x ∈ [0, 1].
+Allocation-free; suitable for inner loops.
+"""
+@inline function colormap_lookup(lut::Vector{RGB{Float64}}, x::Float64)
+    n = length(lut)
+    t = clamp(x, 0.0, 1.0) * (n - 1)
+    i = floor(Int, t)
+    i = clamp(i, 0, n - 2)
+    frac = t - i
+    @inbounds c1 = lut[i + 1]
+    @inbounds c2 = lut[i + 2]
+    return RGB{Float64}(
+        c1.r + frac * (c2.r - c1.r),
+        c1.g + frac * (c2.g - c1.g),
+        c1.b + frac * (c2.b - c1.b)
+    )
+end
+
+"""
     apply_intensity_colormap(intensity::Matrix{Float64}, mapping::IntensityColorMapping)
 
 Apply intensity-based colormap to grayscale intensity image.
@@ -29,23 +64,54 @@ Apply intensity-based colormap to grayscale intensity image.
 Returns Matrix{RGB{Float64}}
 """
 function apply_intensity_colormap(intensity::Matrix{Float64}, mapping::IntensityColorMapping)
-    # Copy to avoid modifying input
-    img = copy(intensity)
+    # Clip + normalize + colormap in one pass to minimize allocations
+    # Step 1: compute clip value (needs non-zero percentile)
+    clip_val = if mapping.clip_percentile >= 1.0
+        maximum(intensity)
+    else
+        n_nonzero = 0
+        @inbounds for v in intensity
+            n_nonzero += (v > 0)
+        end
+        if n_nonzero == 0
+            0.0
+        else
+            nonzero = Vector{Float64}(undef, n_nonzero)
+            idx = 0
+            @inbounds for v in intensity
+                if v > 0
+                    idx += 1
+                    nonzero[idx] = v
+                end
+            end
+            quantile(nonzero, mapping.clip_percentile)
+        end
+    end
 
-    # Clip at percentile
-    clip_at_percentile(img, mapping.clip_percentile)
+    # Step 2: find min/max of clipped values for normalization
+    min_val = typemax(Float64)
+    max_val = typemin(Float64)
+    @inbounds for v in intensity
+        clamped = min(v, clip_val)
+        min_val = min(min_val, clamped)
+        max_val = max(max_val, clamped)
+    end
 
-    # Normalize to [0, 1]
-    img_norm = normalize_to_01(img)
+    # Step 3: normalize + colormap in single pass
+    lut = get_colormap_lut(mapping.colormap)
+    result = Matrix{RGB{Float64}}(undef, size(intensity))
 
-    # Get colormap
-    cmap = get_colormap(mapping.colormap)
-
-    # Apply colormap
-    result = similar(img, RGB{Float64})
-    for i in eachindex(img_norm)
-        # ColorSchemes.get maps [0,1] -> RGB
-        result[i] = get(cmap, img_norm[i])
+    if max_val ≈ min_val
+        fill_color = colormap_lookup(lut, 0.5)
+        @inbounds for i in eachindex(result)
+            result[i] = fill_color
+        end
+    else
+        scale = 1.0 / (max_val - min_val)
+        @inbounds for i in eachindex(intensity)
+            normalized = (min(intensity[i], clip_val) - min_val) * scale
+            result[i] = colormap_lookup(lut, normalized)
+        end
     end
 
     return result
@@ -67,7 +133,8 @@ Returns RGB{Float64}
 """
 function get_field_color(emitter, mapping::FieldColorMapping,
                         value_range::Tuple{Float64, Float64};
-                        frame_offsets=nothing)
+                        frame_offsets=nothing,
+                        lut::Union{Vector{RGB{Float64}}, Nothing}=nothing)
     # Get field value (handles computed fields like :absolute_frame)
     value = get_field_value(emitter, mapping.field; frame_offsets=frame_offsets)
 
@@ -79,9 +146,9 @@ function get_field_color(emitter, mapping::FieldColorMapping,
         normalized = clamp((value - min_val) / (max_val - min_val), 0.0, 1.0)
     end
 
-    # Get colormap and map to color
-    cmap = get_colormap(mapping.colormap)
-    return get(cmap, normalized)
+    # Use pre-built LUT if provided, otherwise build one
+    _lut = lut !== nothing ? lut : get_colormap_lut(mapping.colormap)
+    return colormap_lookup(_lut, normalized)
 end
 
 """
@@ -102,8 +169,9 @@ end
 
 function get_emitter_color(emitter, mapping::FieldColorMapping;
                           value_range::Tuple{Float64, Float64},
-                          frame_offsets=nothing)
-    return get_field_color(emitter, mapping, value_range; frame_offsets=frame_offsets)
+                          frame_offsets=nothing,
+                          lut::Union{Vector{RGB{Float64}}, Nothing}=nothing)
+    return get_field_color(emitter, mapping, value_range; frame_offsets=frame_offsets, lut=lut)
 end
 
 function get_emitter_color(emitter, mapping::IntensityColorMapping; value_range=nothing)
@@ -199,8 +267,8 @@ function blend_field_colors(values::Vector{Float64}, weights::Vector{Float64},
         normalized = clamp((avg_value - min_val) / (max_val - min_val), 0.0, 1.0)
     end
 
-    cmap = get_colormap(mapping.colormap)
-    return get(cmap, normalized)
+    lut = get_colormap_lut(mapping.colormap)
+    return colormap_lookup(lut, normalized)
 end
 
 """
