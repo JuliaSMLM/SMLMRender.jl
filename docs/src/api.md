@@ -67,6 +67,7 @@ create_target_from_smld
 physical_to_pixel
 physical_to_pixel_index
 save_image
+compose
 export_colorbar
 list_recommended_colormaps
 api

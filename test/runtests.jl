@@ -302,4 +302,36 @@ end
         @test result[2] isa RenderInfo
     end
 
+    @testset "compose" begin
+        # Create two small test images
+        bg = fill(RGB{Float64}(0.5, 0.5, 0.5), 10, 10)
+        bg[1, 1] = RGB{Float64}(0.0, 0.0, 0.0)  # black pixel
+
+        fg = zeros(RGB{Float64}, 10, 10)
+        fg[5, 5] = RGB{Float64}(1.0, 0.0, 0.0)  # red pixel
+
+        # Additive blend
+        added = compose(bg, fg, blend=:additive)
+        @test added[5, 5] ≈ RGB{Float64}(1.0, 0.5, 0.5)  # gray + red
+        @test added[1, 1] ≈ RGB{Float64}(0.0, 0.0, 0.0)  # bg was black here, fg is zero → stays black
+
+        # Replace blend — non-black fg pixels overwrite
+        replaced = compose(bg, fg, blend=:replace)
+        @test replaced[5, 5] ≈ RGB{Float64}(1.0, 0.0, 0.0)  # red replaces gray
+        @test replaced[3, 3] ≈ RGB{Float64}(0.5, 0.5, 0.5)  # no fg, keeps bg
+
+        # Replace with black fg pixel — should NOT overwrite
+        @test replaced[1, 1] ≈ RGB{Float64}(0.0, 0.0, 0.0)  # bg was black, fg absent → stays black
+
+        # Vector form
+        vec_result = compose([bg, fg], blend=:replace)
+        @test vec_result == replaced
+
+        # Dimension mismatch
+        @test_throws AssertionError compose(bg, zeros(RGB{Float64}, 5, 5))
+
+        # Invalid blend mode
+        @test_throws AssertionError compose(bg, fg, blend=:invalid)
+    end
+
 end

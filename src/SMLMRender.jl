@@ -62,7 +62,7 @@ export render  # Multi-channel via dispatch on Vector{SMLD}
 # Export utilities (may be useful for users)
 export Image2DTarget, create_target_from_smld
 export list_recommended_colormaps
-export save_image
+export save_image, compose
 export export_colorbar
 
 # Export API documentation function
