@@ -28,7 +28,7 @@ println(&quot;Render time: $(round(info.elapsed_s * 1000, digits=1)) ms&quot;)
 
 # Save and display</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Rendered 5648 localizations
 Image size: (1280, 1280)
-Render time: 35.1 ms</code></pre><p><img src="../basic_render.png" alt="Basic rendering with default settings"/></p><h3 id="Custom-Colormap"><a class="docs-heading-anchor" href="#Custom-Colormap">Custom Colormap</a><a id="Custom-Colormap-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Colormap" title="Permalink"></a></h3><p>Choose from many available colormaps:</p><pre><code class="language-julia hljs"># Classic SMLM hot colormap (black → red → yellow → white)
+Render time: 34.0 ms</code></pre><p><img src="../basic_render.png" alt="Basic rendering with default settings"/></p><h3 id="Custom-Colormap"><a class="docs-heading-anchor" href="#Custom-Colormap">Custom Colormap</a><a id="Custom-Colormap-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Colormap" title="Permalink"></a></h3><p>Choose from many available colormaps:</p><pre><code class="language-julia hljs"># Classic SMLM hot colormap (black → red → yellow → white)
 (img_hot, _) = render(smld, RenderConfig(colormap=:hot, zoom=20))
 
 # Inferno colormap (black → purple → orange → yellow)
@@ -145,16 +145,16 @@ config = RenderConfig(color_by=:σ_x, colormap=:plasma, zoom=20, filename=&quot;
 (img, info) = render([smld1, smld2],
                      colors = [:magenta, :yellow],
                      zoom = 20,
-                     filename = &quot;magenta_yellow.png&quot;)</code></pre><h3 id="Multi-Channel-with-Different-Strategies"><a class="docs-heading-anchor" href="#Multi-Channel-with-Different-Strategies">Multi-Channel with Different Strategies</a><a id="Multi-Channel-with-Different-Strategies-1"></a><a class="docs-heading-anchor-permalink" href="#Multi-Channel-with-Different-Strategies" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Note: Currently all channels use same strategy
-# For different strategies per channel, render separately and combine manually
+                     filename = &quot;magenta_yellow.png&quot;)</code></pre><h3 id="Multi-Channel-with-Different-Strategies"><a class="docs-heading-anchor" href="#Multi-Channel-with-Different-Strategies">Multi-Channel with Different Strategies</a><a id="Multi-Channel-with-Different-Strategies-1"></a><a class="docs-heading-anchor-permalink" href="#Multi-Channel-with-Different-Strategies" title="Permalink"></a></h3><p>Use <code>compose()</code> to combine layers rendered with different strategies:</p><pre><code class="language-julia hljs"># Render each channel with its own strategy
+(img1, _) = render(smld1, color=:gray, strategy=GaussianRender(), zoom=20)
+(img2, _) = render(smld2, color=:red, strategy=CircleRender(), zoom=20)
 
-# Render each channel
-(img1, _) = render(smld1, color=:red, strategy=GaussianRender(), zoom=20)
-(img2, _) = render(smld2, color=:green, strategy=CircleRender(), zoom=20)
+# Additive blend (default) — layers sum together
+img_add = compose(img1, img2)
 
-# Manual combination
-img_combined = img1 .+ img2
-save_image(&quot;mixed_strategies.png&quot;, img_combined)</code></pre><h2 id="Output-and-Export"><a class="docs-heading-anchor" href="#Output-and-Export">Output and Export</a><a id="Output-and-Export-1"></a><a class="docs-heading-anchor-permalink" href="#Output-and-Export" title="Permalink"></a></h2><h3 id="Direct-File-Save"><a class="docs-heading-anchor" href="#Direct-File-Save">Direct File Save</a><a id="Direct-File-Save-1"></a><a class="docs-heading-anchor-permalink" href="#Direct-File-Save" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Save directly during rendering
+# Replace blend — red circles overwrite gray Gaussians where non-black
+img_replace = compose(img1, img2, blend=:replace)
+save_image(&quot;mixed_strategies.png&quot;, img_replace)</code></pre><h2 id="Output-and-Export"><a class="docs-heading-anchor" href="#Output-and-Export">Output and Export</a><a id="Output-and-Export-1"></a><a class="docs-heading-anchor-permalink" href="#Output-and-Export" title="Permalink"></a></h2><h3 id="Direct-File-Save"><a class="docs-heading-anchor" href="#Direct-File-Save">Direct File Save</a><a id="Direct-File-Save-1"></a><a class="docs-heading-anchor-permalink" href="#Direct-File-Save" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Save directly during rendering
 (img, info) = render(smld,
                      colormap = :inferno,
                      zoom = 20,
@@ -271,4 +271,4 @@ export_colorbar(:turbo, info.field_range, &quot;Z-depth (μm)&quot;, &quot;depth
                      color_by = :frame,
                      colormap = :twilight,       # Cyclic for temporal
                      zoom = 20,
-                     filename = &quot;temporal.png&quot;)</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../api/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Wednesday 18 February 2026 02:48">Wednesday 18 February 2026</span>. Using Julia version 1.12.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+                     filename = &quot;temporal.png&quot;)</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../api/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Tuesday 10 March 2026 19:27">Tuesday 10 March 2026</span>. Using Julia version 1.12.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
