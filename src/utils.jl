@@ -418,6 +418,70 @@ function draw_antialiased_point!(img::Matrix{RGB{Float64}}, x::Real, y::Real,
 end
 
 """
+    compose(images::Matrix{RGB{Float64}}...; blend=:additive)
+    compose(images::Vector{Matrix{RGB{Float64}}}; blend=:additive)
+
+Composite pre-rendered images into a single image.
+
+Useful when layers are rendered with different strategies (e.g., Gaussian
+background + Circle overlay) and need to be combined.
+
+# Blend modes
+- `:additive` — sum all layers, clamp to [0,1] (default)
+- `:replace` — later layers overwrite earlier ones where non-black.
+  Best suited for outline renders (CircleRender, EllipseRender) where
+  pixels are either fully drawn or black.
+
+# Examples
+```julia
+# Gaussian locs as background, BaGoL circles on top
+(bg, _) = render(locs, strategy=GaussianRender(), color=:gray, zoom=20)
+(fg, _) = render(bagol, strategy=CircleRender(), color=:red, zoom=20)
+combined = compose(bg, fg, blend=:replace)
+```
+"""
+function compose(images::Matrix{RGB{Float64}}...; blend::Symbol=:additive)
+    return compose(collect(images); blend=blend)
+end
+
+function compose(images::Vector{Matrix{RGB{Float64}}}; blend::Symbol=:additive)
+    @assert !isempty(images) "Must provide at least one image"
+    @assert blend in (:additive, :replace) "blend must be :additive or :replace"
+
+    sz = size(images[1])
+    for img in images
+        @assert size(img) == sz "All images must have the same dimensions"
+    end
+
+    combined = zeros(RGB{Float64}, sz)
+
+    if blend == :additive
+        for img in images
+            combined .+= img
+        end
+    else  # :replace
+        for img in images
+            @inbounds for i in eachindex(combined)
+                px = img[i]
+                if px.r > 0 || px.g > 0 || px.b > 0
+                    combined[i] = px
+                end
+            end
+        end
+    end
+
+    # Clamp to [0, 1]
+    @inbounds for i in eachindex(combined)
+        px = combined[i]
+        combined[i] = RGB(clamp(px.r, 0.0, 1.0),
+                          clamp(px.g, 0.0, 1.0),
+                          clamp(px.b, 0.0, 1.0))
+    end
+
+    return combined
+end
+
+"""
     save_image(filename::String, img::Matrix{RGB})
 
 Save rendered image directly to file.

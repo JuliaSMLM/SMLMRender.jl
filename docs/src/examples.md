@@ -366,17 +366,19 @@ using Colors
 
 ### Multi-Channel with Different Strategies
 
+Use `compose()` to combine layers rendered with different strategies:
+
 ```julia
-# Note: Currently all channels use same strategy
-# For different strategies per channel, render separately and combine manually
+# Render each channel with its own strategy
+(img1, _) = render(smld1, color=:gray, strategy=GaussianRender(), zoom=20)
+(img2, _) = render(smld2, color=:red, strategy=CircleRender(), zoom=20)
 
-# Render each channel
-(img1, _) = render(smld1, color=:red, strategy=GaussianRender(), zoom=20)
-(img2, _) = render(smld2, color=:green, strategy=CircleRender(), zoom=20)
+# Additive blend (default) — layers sum together
+img_add = compose(img1, img2)
 
-# Manual combination
-img_combined = img1 .+ img2
-save_image("mixed_strategies.png", img_combined)
+# Replace blend — red circles overwrite gray Gaussians where non-black
+img_replace = compose(img1, img2, blend=:replace)
+save_image("mixed_strategies.png", img_replace)
 ```
 
 ## Output and Export

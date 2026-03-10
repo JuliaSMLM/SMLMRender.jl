@@ -4,7 +4,7 @@ High-performance rendering for Single Molecule Localization Microscopy (SMLM) da
 
 ## Exports Summary
 
-Total exports: 25 (2 functions, 18 types, 5 utilities)
+Total exports: 26 (2 functions, 18 types, 6 utilities)
 
 **Main Functions:** `render()` - returns `(image, info)` tuple; `api()` - returns API documentation as String
 
@@ -14,7 +14,7 @@ Total exports: 25 (2 functions, 18 types, 5 utilities)
 
 **Render Configuration:** `RenderTarget`, `Image2DTarget`, `ContrastMethod`, `ContrastOptions`, `RenderConfig`, `RenderInfo`, `RenderResult2D` (deprecated)
 
-**Utilities:** `create_target_from_smld`, `list_recommended_colormaps`, `save_image`, `export_colorbar`
+**Utilities:** `create_target_from_smld`, `list_recommended_colormaps`, `save_image`, `export_colorbar`, `compose`
 
 ## Key Concepts
 
@@ -314,6 +314,26 @@ Return dictionary of recommended colormaps organized by category.
 - `:diverging` - For data with meaningful center (RdBu, seismic, coolwarm)
 - `:cyclic` - For periodic data (twilight, phase)
 - `:perceptual` - Perceptually uniform (viridis, cividis, inferno, magma, plasma)
+
+#### `compose(images...; blend=:additive) -> Matrix{RGB{Float64}}`
+
+Composite pre-rendered images into a single image. Decouples compositing from rendering, allowing different strategies per layer.
+
+**Arguments:**
+- `images` - Two or more `Matrix{RGB{Float64}}` images (varargs or Vector)
+- `blend::Symbol` - Blend mode (default: `:additive`)
+  - `:additive` — sum all layers, clamp to [0,1]
+  - `:replace` — later layers overwrite earlier ones where non-black. Best for outline renders (CircleRender, EllipseRender).
+
+**Returns:** `Matrix{RGB{Float64}}` composited image
+
+**Example:**
+```julia
+# Gaussian background + Circle overlay with different strategies
+(bg, _) = render(locs, strategy=GaussianRender(), color=:gray, zoom=20)
+(fg, _) = render(bagol_emitters, strategy=CircleRender(), color=:red, zoom=20)
+combined = compose(bg, fg, blend=:replace)
+```
 
 #### `save_image(filename::String, img::Matrix{RGB}) -> Nothing`
 
