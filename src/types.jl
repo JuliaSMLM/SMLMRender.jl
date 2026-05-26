@@ -287,8 +287,10 @@ struct GrayscaleMapping <: ColorMapping end
 """
     CategoricalColorMapping <: ColorMapping
 
-Color localizations by integer field using categorical palette. Colors cycle
-when values exceed palette size. Ideal for cluster IDs, molecule IDs, etc.
+Color localizations by integer field using categorical palette. An id of `0`
+renders as gray (reserved for unclustered/background localizations); all other
+values cycle through the palette when they exceed its size. Ideal for cluster
+IDs, molecule IDs, etc.
 
 # Fields
 - `field::Symbol`: Integer field name (:id, :cluster_id, :molecule, etc.)

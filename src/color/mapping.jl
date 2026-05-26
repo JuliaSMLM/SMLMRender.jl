@@ -184,11 +184,29 @@ function get_emitter_color(emitter, mapping::GrayscaleMapping; value_range=nothi
     return RGB{Float64}(1.0, 1.0, 1.0)
 end
 
+# Color used for the reserved categorical id 0 (e.g. unclustered/background)
+const CATEGORICAL_ZERO_COLOR = RGB{Float64}(0.5, 0.5, 0.5)
+
+"""
+    categorical_color(int_value::Integer, palette, n_colors::Integer)
+
+Map an integer category to an RGB color. An id of `0` renders as gray
+(`CATEGORICAL_ZERO_COLOR`), reserved for unclustered/background localizations.
+All other values use modular indexing into `palette`, so colors cycle for
+values exceeding the palette size.
+"""
+function categorical_color(int_value::Integer, palette, n_colors::Integer)
+    int_value == 0 && return CATEGORICAL_ZERO_COLOR
+    idx = mod1(int_value, n_colors)
+    return RGB{Float64}(palette[idx])
+end
+
 """
     get_emitter_color(emitter, mapping::CategoricalColorMapping; kwargs...)
 
-Get categorical color for emitter based on integer field value.
-Uses modular indexing into palette - colors cycle for values > palette size.
+Get categorical color for emitter based on integer field value. An id of `0`
+renders as gray; all other values use modular palette indexing so colors cycle
+for values exceeding the palette size.
 """
 function get_emitter_color(emitter, mapping::CategoricalColorMapping; kwargs...)
     # Get integer field value
@@ -199,10 +217,7 @@ function get_emitter_color(emitter, mapping::CategoricalColorMapping; kwargs...)
     palette = get_colormap(mapping.palette)
     n_colors = length(palette)
 
-    # Modular index (1-based)
-    idx = mod1(int_value, n_colors)
-
-    return RGB{Float64}(palette[idx])
+    return categorical_color(int_value, palette, n_colors)
 end
 
 """
