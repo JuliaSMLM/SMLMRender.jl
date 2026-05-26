@@ -289,8 +289,9 @@ struct GrayscaleMapping <: ColorMapping end
 
 Color localizations by integer field using categorical palette. An id of `0`
 renders as gray (reserved for unclustered/background localizations); all other
-values cycle through the palette when they exceed its size. Ideal for cluster
-IDs, molecule IDs, etc.
+values cycle through the palette when they exceed its size. Gray-like palette
+entries (e.g. tab10's 8th color) are skipped for positive ids so no cluster
+collides with the reserved gray. Ideal for cluster IDs, molecule IDs, etc.
 
 # Fields
 - `field::Symbol`: Integer field name (:id, :cluster_id, :molecule, etc.)

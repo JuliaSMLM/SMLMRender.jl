@@ -187,17 +187,48 @@ end
 # Color used for the reserved categorical id 0 (e.g. unclustered/background)
 const CATEGORICAL_ZERO_COLOR = RGB{Float64}(0.5, 0.5, 0.5)
 
+# A palette entry is treated as "gray-like" (and skipped for positive cluster
+# ids) when its chroma is below this tolerance. This keeps clusters from being
+# colored in a shade that collides with the reserved id-0 gray — e.g. tab10's
+# 8th color is (0.498, 0.498, 0.498), nearly identical to CATEGORICAL_ZERO_COLOR.
+const CATEGORICAL_GRAY_CHROMA_TOL = 0.1
+
 """
-    categorical_color(int_value::Integer, palette, n_colors::Integer)
+    is_gray_like(c) -> Bool
+
+True if a color is approximately achromatic (low chroma), i.e. close to a gray.
+Used to exclude palette entries that would collide with the reserved id-0 gray.
+"""
+function is_gray_like(c)
+    rgb = RGB{Float64}(c)
+    return (max(rgb.r, rgb.g, rgb.b) - min(rgb.r, rgb.g, rgb.b)) < CATEGORICAL_GRAY_CHROMA_TOL
+end
+
+"""
+    categorical_palette(name::Symbol) -> Vector{RGB{Float64}}
+
+Return the named palette with gray-like entries removed, so positive category
+ids never render in a shade that collides with the reserved id-0 gray. Falls
+back to the full palette if every entry is gray-like.
+"""
+function categorical_palette(name::Symbol)
+    full = RGB{Float64}[RGB{Float64}(c) for c in get_colormap(name)]
+    filtered = filter(!is_gray_like, full)
+    return isempty(filtered) ? full : filtered
+end
+
+"""
+    categorical_color(int_value::Integer, palette::AbstractVector)
 
 Map an integer category to an RGB color. An id of `0` renders as gray
 (`CATEGORICAL_ZERO_COLOR`), reserved for unclustered/background localizations.
-All other values use modular indexing into `palette`, so colors cycle for
-values exceeding the palette size.
+All other values cycle through `palette` via modular indexing — `palette`
+should already have gray-like entries removed (see [`categorical_palette`](@ref))
+so no cluster collides with the reserved gray.
 """
-function categorical_color(int_value::Integer, palette, n_colors::Integer)
+function categorical_color(int_value::Integer, palette::AbstractVector)
     int_value == 0 && return CATEGORICAL_ZERO_COLOR
-    idx = mod1(int_value, n_colors)
+    idx = mod1(int_value, length(palette))
     return RGB{Float64}(palette[idx])
 end
 
@@ -205,19 +236,18 @@ end
     get_emitter_color(emitter, mapping::CategoricalColorMapping; kwargs...)
 
 Get categorical color for emitter based on integer field value. An id of `0`
-renders as gray; all other values use modular palette indexing so colors cycle
-for values exceeding the palette size.
+renders as gray; all other values cycle through the palette (with gray-like
+entries skipped) so colors cycle for values exceeding the palette size.
 """
 function get_emitter_color(emitter, mapping::CategoricalColorMapping; kwargs...)
     # Get integer field value
     value = getfield(emitter, mapping.field)
     int_value = round(Int, value)
 
-    # Get palette
-    palette = get_colormap(mapping.palette)
-    n_colors = length(palette)
+    # Palette with gray-like entries removed (avoids cluster/noise color clash)
+    palette = categorical_palette(mapping.palette)
 
-    return categorical_color(int_value, palette, n_colors)
+    return categorical_color(int_value, palette)
 end
 
 """

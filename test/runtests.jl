@@ -127,20 +127,28 @@ end
     end
 
     @testset "Categorical id 0 renders as gray" begin
-        palette = SMLMRender.get_colormap(:tab10)
+        palette = SMLMRender.categorical_palette(:tab10)
         n = length(palette)
 
         # id 0 is reserved for unclustered/background -> fixed gray
-        @test SMLMRender.categorical_color(0, palette, n) == SMLMRender.CATEGORICAL_ZERO_COLOR
-        @test SMLMRender.categorical_color(0, palette, n) == RGB{Float64}(0.5, 0.5, 0.5)
+        @test SMLMRender.categorical_color(0, palette) == SMLMRender.CATEGORICAL_ZERO_COLOR
+        @test SMLMRender.categorical_color(0, palette) == RGB{Float64}(0.5, 0.5, 0.5)
 
         # Positive ids use the palette (and are not the gray)
-        @test SMLMRender.categorical_color(1, palette, n) != SMLMRender.CATEGORICAL_ZERO_COLOR
-        @test SMLMRender.categorical_color(1, palette, n) == RGB{Float64}(palette[1])
+        @test SMLMRender.categorical_color(1, palette) != SMLMRender.CATEGORICAL_ZERO_COLOR
+        @test SMLMRender.categorical_color(1, palette) == RGB{Float64}(palette[1])
 
         # Cycling intact for values beyond palette size
-        @test SMLMRender.categorical_color(n + 1, palette, n) ==
-              SMLMRender.categorical_color(1, palette, n)
+        @test SMLMRender.categorical_color(n + 1, palette) ==
+              SMLMRender.categorical_color(1, palette)
+
+        # Gray-like palette entries are filtered out: tab10's 8th color is
+        # (0.498,0.498,0.498), which would collide with the noise gray.
+        @test n == length(SMLMRender.get_colormap(:tab10)) - 1
+        @test !any(SMLMRender.is_gray_like, palette)
+        # No positive cluster id (full cycle) ever renders gray-like
+        @test all(!SMLMRender.is_gray_like(SMLMRender.categorical_color(k, palette))
+                  for k in 1:n)
     end
 
     @testset "Field range in RenderInfo" begin
