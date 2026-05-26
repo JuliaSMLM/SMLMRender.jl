@@ -206,9 +206,8 @@ the most frequent cluster's color (mode).
 function render_histogram_categorical(smld, target::Image2DTarget,
                                       mapping::CategoricalColorMapping;
                                       clip_percentile::Union{Float64, Nothing}=0.99)
-    # Get palette
-    palette = get_colormap(mapping.palette)
-    n_colors = length(palette)
+    # Palette with gray-like entries removed (avoids cluster/noise color clash)
+    palette = categorical_palette(mapping.palette)
 
     # Track color component sums and counts per pixel
     r_sum = zeros(Float64, target.height, target.width)
@@ -222,7 +221,7 @@ function render_histogram_categorical(smld, target::Image2DTarget,
             # Get categorical color (id 0 renders as gray)
             value = getfield(emitter, mapping.field)
             int_value = round(Int, value)
-            color = categorical_color(int_value, palette, n_colors)
+            color = categorical_color(int_value, palette)
 
             # Accumulate color components and count
             r_sum[i, j] += color.r
