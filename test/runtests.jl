@@ -126,6 +126,23 @@ end
         @test info_manual.color_mode == :manual
     end
 
+    @testset "Categorical id 0 renders as gray" begin
+        palette = SMLMRender.get_colormap(:tab10)
+        n = length(palette)
+
+        # id 0 is reserved for unclustered/background -> fixed gray
+        @test SMLMRender.categorical_color(0, palette, n) == SMLMRender.CATEGORICAL_ZERO_COLOR
+        @test SMLMRender.categorical_color(0, palette, n) == RGB{Float64}(0.5, 0.5, 0.5)
+
+        # Positive ids use the palette (and are not the gray)
+        @test SMLMRender.categorical_color(1, palette, n) != SMLMRender.CATEGORICAL_ZERO_COLOR
+        @test SMLMRender.categorical_color(1, palette, n) == RGB{Float64}(palette[1])
+
+        # Cycling intact for values beyond palette size
+        @test SMLMRender.categorical_color(n + 1, palette, n) ==
+              SMLMRender.categorical_color(1, palette, n)
+    end
+
     @testset "Field range in RenderInfo" begin
         camera = IdealCamera(32, 32, 100.0)
         emitters = [
