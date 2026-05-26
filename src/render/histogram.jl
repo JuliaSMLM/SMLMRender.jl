@@ -219,11 +219,10 @@ function render_histogram_categorical(smld, target::Image2DTarget,
     for emitter in smld.emitters
         i, j = physical_to_pixel_index(emitter.x, emitter.y, target)
         if in_bounds(i, j, target)
-            # Get categorical color
+            # Get categorical color (id 0 renders as gray)
             value = getfield(emitter, mapping.field)
             int_value = round(Int, value)
-            idx = mod1(int_value, n_colors)
-            color = RGB{Float64}(palette[idx])
+            color = categorical_color(int_value, palette, n_colors)
 
             # Accumulate color components and count
             r_sum[i, j] += color.r
