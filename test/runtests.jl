@@ -359,4 +359,72 @@ end
         @test_throws AssertionError compose(bg, fg, blend=:invalid)
     end
 
+    @testset "Empty and few-localization robustness" begin
+        # Regression: render() must not crash on 0 or 1-2 localizations and must
+        # return a valid image (blank for empty) across every
+        # strategy × color-mode × resolution-mode combination. Previously empty
+        # input crashed in reductions (extrema/quantile over empty values,
+        # zero-span target bounds) and tiny inputs hit a 0-dimension target.
+        cam = IdealCamera(32, 32, 100.0)
+
+        # SMLD with n emitters (n=0 → typed-empty vector).
+        make_n(n) = BasicSMLD(
+            n == 0 ? Emitter2DFit{Float64}[] :
+                     [make_emitter2d(3.0 + 0.05k, 3.0 + 0.05k, 1000.0, 10.0,
+                                     0.02, 0.02, 50.0, 2.0; frame=1, id=k)
+                      for k in 1:n],
+            cam, 1, 1)
+
+        # color-mode label => render kwargs
+        intensity   = (:intensity,   (; colormap=:inferno))
+        field       = (:field,       (; color_by=:photons))
+        categorical = (:categorical, (; color_by=:id, categorical=true))
+        manual      = (:manual,      (; color=:red))
+
+        # Circle/Ellipse don't support the intensity colormap.
+        strategies = [
+            (:gaussian,  GaussianRender(),  [intensity, field, categorical, manual]),
+            (:histogram, HistogramRender(), [intensity, field, categorical, manual]),
+            (:circle,    CircleRender(),    [field, categorical, manual]),
+            (:ellipse,   EllipseRender(),   [field, categorical, manual]),
+        ]
+
+        for (sname, strat, modes) in strategies, (cname, ckw) in modes,
+            resmode in (:zoom, :pixel_size), n in (0, 1, 2)
+
+            rkw = resmode === :zoom ? (; zoom=5) : (; pixel_size=100.0)
+
+            # Must not throw for 0, 1, or 2 localizations.
+            img = nothing; info = nothing; threw = false
+            try
+                (img, info) = render(make_n(n); strategy=strat, rkw..., ckw...)
+            catch err
+                threw = true
+                @info "render threw" sname cname resmode n err
+            end
+            @test !threw
+            threw && continue
+
+            # Valid RGB image with positive, info-consistent dimensions.
+            @test img isa Matrix{RGB{Float64}}
+            @test size(img, 1) > 0 && size(img, 2) > 0
+            @test size(img) == info.output_size
+            @test info.n_emitters_rendered == n
+            @test all(p -> isfinite(p.r) && isfinite(p.g) && isfinite(p.b), img)
+
+            if n == 0
+                # Empty input → spatially uniform (no spurious localized signal).
+                @test all(==(first(img)), img)
+                if cname === :intensity
+                    # Colormap zero (blank background), far below the previous
+                    # mid-colormap fill that wrongly painted empties solid.
+                    @test max(first(img).r, first(img).g, first(img).b) < 0.1
+                else
+                    # All other modes render an empty input as pure black.
+                    @test first(img) == RGB{Float64}(0.0, 0.0, 0.0)
+                end
+            end
+        end
+    end
+
 end

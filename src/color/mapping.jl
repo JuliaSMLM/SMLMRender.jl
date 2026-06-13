@@ -102,7 +102,10 @@ function apply_intensity_colormap(intensity::Matrix{Float64}, mapping::Intensity
     result = Matrix{RGB{Float64}}(undef, size(intensity))
 
     if max_val ≈ min_val
-        fill_color = colormap_lookup(lut, 0.5)
+        # Uniform range: all-zero (empty / no signal) maps to the colormap's
+        # zero end so the image is blank; uniform non-zero signal maps to
+        # mid-colormap so it stays visible.
+        fill_color = colormap_lookup(lut, iszero(max_val) ? 0.0 : 0.5)
         @inbounds for i in eachindex(result)
             result[i] = fill_color
         end
