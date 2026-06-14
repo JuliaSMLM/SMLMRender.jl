@@ -242,15 +242,19 @@ Get categorical color for emitter based on integer field value. An id of `0`
 renders as gray; all other values cycle through the palette (with gray-like
 entries skipped) so colors cycle for values exceeding the palette size.
 """
-function get_emitter_color(emitter, mapping::CategoricalColorMapping; kwargs...)
+function get_emitter_color(emitter, mapping::CategoricalColorMapping;
+                           palette::Union{AbstractVector, Nothing}=nothing, kwargs...)
     # Get integer field value
     value = getfield(emitter, mapping.field)
     int_value = round(Int, value)
 
-    # Palette with gray-like entries removed (avoids cluster/noise color clash)
-    palette = categorical_palette(mapping.palette)
+    # Palette with gray-like entries removed (avoids cluster/noise color clash).
+    # Prefer a caller-supplied palette built once per render — rebuilding it here
+    # reallocates the palette for every emitter (see the render_*_categorical
+    # loops, which hoist it out and pass it in, mirroring the field `lut`).
+    _palette = palette !== nothing ? palette : categorical_palette(mapping.palette)
 
-    return categorical_color(int_value, palette)
+    return categorical_color(int_value, _palette)
 end
 
 """

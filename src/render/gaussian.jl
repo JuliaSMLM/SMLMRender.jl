@@ -194,6 +194,9 @@ function render_gaussian_categorical(smld, target::Image2DTarget,
     g_num = zeros(Float64, target.height, target.width)
     b_num = zeros(Float64, target.height, target.width)
 
+    # Build the palette once, not per emitter (see get_emitter_color).
+    palette = categorical_palette(mapping.palette)
+
     for emitter in smld.emitters
         # Get covariance values
         sigma_x, sigma_y, sigma_xy = get_emitter_covariance(emitter, strategy)
@@ -203,7 +206,7 @@ function render_gaussian_categorical(smld, target::Image2DTarget,
         end
 
         # Get categorical color for this emitter
-        color = get_emitter_color(emitter, mapping)
+        color = get_emitter_color(emitter, mapping; palette=palette)
 
         # Render blob, accumulating both intensity and color
         render_gaussian_blob_weighted!(intensity, r_num, g_num, b_num,

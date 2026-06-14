@@ -111,6 +111,9 @@ function render_circle_categorical(smld, target::Image2DTarget,
                                    mapping::CategoricalColorMapping)
     result = zeros(RGB{Float64}, target.height, target.width)
 
+    # Build the palette once, not per emitter (see get_emitter_color).
+    palette = categorical_palette(mapping.palette)
+
     for emitter in smld.emitters
         radius_nm = get_emitter_radius(emitter, strategy)
 
@@ -119,7 +122,7 @@ function render_circle_categorical(smld, target::Image2DTarget,
         end
 
         # Get categorical color
-        color = get_emitter_color(emitter, mapping)
+        color = get_emitter_color(emitter, mapping; palette=palette)
 
         draw_circle_outline!(result, emitter, target, radius_nm,
                            color, strategy.line_width)
