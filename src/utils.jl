@@ -181,23 +181,39 @@ function create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, roi=not
     # Mode 2: pixel_size specified - use data bounds + margin
     else
         emitters = smld.emitters
-        x_coords = [e.x for e in emitters]
-        y_coords = [e.y for e in emitters]
 
-        x_min, x_max = extrema(x_coords)
-        y_min, y_max = extrema(y_coords)
+        if isempty(emitters)
+            # No localizations → no data bounds. Center a minimal blank image at
+            # the origin so render() returns a valid (blank) image instead of
+            # crashing on `extrema` of an empty collection.
+            x_min = x_max = y_min = y_max = 0.0
+        else
+            x_coords = [e.x for e in emitters]
+            y_coords = [e.y for e in emitters]
 
-        # Add margin
-        x_span = x_max - x_min
-        y_span = y_max - y_min
-        x_min -= margin * x_span
-        x_max += margin * x_span
-        y_min -= margin * y_span
-        y_max += margin * y_span
+            x_min, x_max = extrema(x_coords)
+            y_min, y_max = extrema(y_coords)
+        end
+
+        # Floor each span at one pixel so empty / single / coincident data still
+        # yields a positive-size image with a valid (min < max) range instead of
+        # a zero-dimension AssertionError. For data spanning ≥ 1 pixel this is a
+        # no-op and the bounds below reproduce the original margin computation.
+        one_px_um = pixel_size / 1000
+        x_span = max(x_max - x_min, one_px_um)
+        y_span = max(y_max - y_min, one_px_um)
+
+        # Bounds centered on the data, expanded by the fractional margin.
+        x_mid = (x_min + x_max) / 2
+        y_mid = (y_min + y_max) / 2
+        x_min = x_mid - x_span * (0.5 + margin)
+        x_max = x_mid + x_span * (0.5 + margin)
+        y_min = y_mid - y_span * (0.5 + margin)
+        y_max = y_mid + y_span * (0.5 + margin)
 
         # Calculate image dimensions
-        width = ceil(Int, (x_max - x_min) * 1000 / pixel_size)
-        height = ceil(Int, (y_max - y_min) * 1000 / pixel_size)
+        width = max(1, ceil(Int, (x_max - x_min) * 1000 / pixel_size))
+        height = max(1, ceil(Int, (y_max - y_min) * 1000 / pixel_size))
     end
 
     return Image2DTarget(width, height, pixel_size, (x_min, x_max), (y_min, y_max))
@@ -236,6 +252,10 @@ function calculate_field_range(smld, field::Symbol, clip_percentiles; frame_offs
     if field === :absolute_frame && frame_offsets === nothing
         frame_offsets = compute_frame_offsets(smld)
     end
+
+    # No localizations → no field values to reduce over. Return a default unit
+    # range so downstream colormap normalization stays valid (image is blank).
+    isempty(smld.emitters) && return (0.0, 1.0)
 
     values = [get_field_value(e, field; frame_offsets=frame_offsets) for e in smld.emitters]
 
@@ -301,7 +321,9 @@ function normalize_to_01(img::Matrix{T}) where T<:Real
     max_val = maximum(img)
 
     if max_val ≈ min_val
-        return fill(T(0.5), size(img))
+        # Uniform image: all-zero (no signal, e.g. empty input) stays blank;
+        # uniform non-zero signal maps to mid-level so it stays visible.
+        return fill(iszero(max_val) ? zero(T) : T(0.5), size(img))
     end
 
     scale = one(T) / (max_val - min_val)

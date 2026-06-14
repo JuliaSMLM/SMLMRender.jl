@@ -102,7 +102,10 @@ function apply_intensity_colormap(intensity::Matrix{Float64}, mapping::Intensity
     result = Matrix{RGB{Float64}}(undef, size(intensity))
 
     if max_val ≈ min_val
-        fill_color = colormap_lookup(lut, 0.5)
+        # Uniform range: all-zero (empty / no signal) maps to the colormap's
+        # zero end so the image is blank; uniform non-zero signal maps to
+        # mid-colormap so it stays visible.
+        fill_color = colormap_lookup(lut, iszero(max_val) ? 0.0 : 0.5)
         @inbounds for i in eachindex(result)
             result[i] = fill_color
         end
@@ -239,15 +242,19 @@ Get categorical color for emitter based on integer field value. An id of `0`
 renders as gray; all other values cycle through the palette (with gray-like
 entries skipped) so colors cycle for values exceeding the palette size.
 """
-function get_emitter_color(emitter, mapping::CategoricalColorMapping; kwargs...)
+function get_emitter_color(emitter, mapping::CategoricalColorMapping;
+                           palette::Union{AbstractVector, Nothing}=nothing, kwargs...)
     # Get integer field value
     value = getfield(emitter, mapping.field)
     int_value = round(Int, value)
 
-    # Palette with gray-like entries removed (avoids cluster/noise color clash)
-    palette = categorical_palette(mapping.palette)
+    # Palette with gray-like entries removed (avoids cluster/noise color clash).
+    # Prefer a caller-supplied palette built once per render — rebuilding it here
+    # reallocates the palette for every emitter (see the render_*_categorical
+    # loops, which hoist it out and pass it in, mirroring the field `lut`).
+    _palette = palette !== nothing ? palette : categorical_palette(mapping.palette)
 
-    return categorical_color(int_value, palette)
+    return categorical_color(int_value, _palette)
 end
 
 """
