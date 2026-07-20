@@ -557,12 +557,27 @@ The image is saved with proper orientation for SMLM visualization.
 
 # Keyword Arguments
 - `pixel_size_nm`: Physical scale in nm per pixel, embedded in the PNG `pHYs`
-  chunk so the saved file carries its own scale (readable by Fiji/ImageJ and by
-  any scalebar consumer). Pass a scalar for isotropic data, or `(x, y)` for
-  independent axis scales. `nothing` (default) writes no scale.
+  chunk so the saved file carries its own scale and a consumer can recover
+  nm-per-pixel from the image alone. Pass a scalar for isotropic data, or
+  `(x, y)` for independent axis scales. `nothing` (default) writes no scale.
 
   `pHYs` is a **PNG-only** field. Other formats accept no scale kwarg at all, so
   a non-PNG target warns and saves without scale rather than failing the write.
+
+  It stores pixels-per-meter in a `UInt32`, so scales it cannot represent — finer
+  than ~0.233 nm/px, or coarser than 1e9 nm/px — warn and save without scale
+  rather than costing you the image.
+
+!!! note "This repurposes the print-resolution field"
+    `pHYs` is nominally an image's print resolution, and that is how LaTeX, Word
+    and browsers read it. Microscopy scales map to enormous DPI — 10 nm/px is
+    2.54e6 DPI — so a PNG saved with a scale reports a near-zero natural print
+    size. Set an explicit width when placing these in documents
+    (`\\includegraphics[width=...]`) rather than relying on natural sizing.
+
+    This is deliberate: `pHYs` is the only standard PNG field for physical
+    scale, and carrying nm-per-pixel is worth more here than a meaningful print
+    size.
 
 # Example
 ```julia

@@ -335,7 +335,7 @@ Composite pre-rendered images into a single image. Decouples compositing from re
 combined = compose(bg, fg, blend=:replace)
 ```
 
-#### `save_image(filename::String, img::Matrix{RGB}) -> Nothing`
+#### `save_image(filename::String, img::Matrix{RGB}; pixel_size_nm=nothing) -> Nothing`
 
 Save rendered image to file.
 
@@ -343,7 +343,20 @@ Save rendered image to file.
 - `filename` - Output path (extension determines format: .png, .tiff, etc.)
 - `img` - RGB image matrix from `render()`
 
-Supports PNG, TIFF, and other formats via FileIO/ImageIO.
+**Keyword Arguments:**
+- `pixel_size_nm` - Physical scale in nm per pixel, embedded in the PNG `pHYs`
+  chunk so the file carries its own scale. Scalar for isotropic data, or
+  `(x, y)` for independent axis scales. `nothing` (default) writes no scale.
+
+Supports PNG, TIFF, and other formats via FileIO/ImageIO. Embedded scale is
+PNG-only: a non-PNG target warns and saves without it. Scales `pHYs` cannot
+represent (finer than ~0.233 nm/px, coarser than 1e9 nm/px) likewise warn and
+save unscaled.
+
+`render()` passes `pixel_size_nm` automatically for `.png` targets, so a render
+saved with `filename` is self-describing. Note that `pHYs` is nominally print
+resolution, so a scaled PNG reports a near-zero natural print size — set explicit
+widths when placing these in documents.
 
 #### `export_colorbar(result::RenderResult2D, filename::String; kwargs...) -> Nothing`
 #### `export_colorbar(colormap::Symbol, value_range::Tuple, label::String, filename::String; kwargs...) -> Nothing`
