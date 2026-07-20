@@ -68,7 +68,7 @@ function render(smld, config::RenderConfig)
 
     # Save to file if requested
     if config.filename !== nothing
-        save_image(config.filename, img)
+        save_image(config.filename, img; pixel_size_nm=info.pixel_size_nm)
     end
 
     return (img, info)
@@ -320,7 +320,7 @@ function render_overlay(smlds::Vector, colors::Vector;
 
     # Save to file if requested
     if filename !== nothing
-        save_image(filename, combined)
+        save_image(filename, combined; pixel_size_nm=info.pixel_size_nm)
     end
 
     return (combined, info)

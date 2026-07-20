@@ -504,7 +504,28 @@ function compose(images::Vector{Matrix{RGB{Float64}}}; blend::Symbol=:additive)
 end
 
 """
-    save_image(filename::String, img::Matrix{RGB})
+    _scale_to_dpi(pixel_size_nm) -> Float64 or Tuple{Float64,Float64}
+
+Convert a pixel size in nanometers to the dots-per-inch value that `PNGFiles`
+stores in the PNG `pHYs` chunk as pixels-per-meter.
+
+A scalar gives isotropic scale; a `(x, y)` tuple gives independent axis scales
+(`pHYs` carries x and y separately, which is what an anisotropic xz/yz
+projection needs).
+"""
+function _scale_to_dpi(pixel_size_nm::Real)
+    @assert pixel_size_nm > 0 "pixel_size_nm must be positive, got $pixel_size_nm"
+    # nm/px -> px/m is 1e9 / nm; dpi is px/m * 0.0254
+    return 0.0254e9 / pixel_size_nm
+end
+
+function _scale_to_dpi(pixel_size_nm::Tuple{<:Real,<:Real})
+    @assert pixel_size_nm[1] > 0 && pixel_size_nm[2] > 0 "pixel_size_nm must be positive, got $pixel_size_nm"
+    return (0.0254e9 / pixel_size_nm[1], 0.0254e9 / pixel_size_nm[2])
+end
+
+"""
+    save_image(filename::String, img::Matrix{RGB}; pixel_size_nm=nothing)
 
 Save rendered image directly to file.
 
@@ -515,13 +536,23 @@ The image is saved with proper orientation for SMLM visualization.
 - `filename`: Output file path (extension determines format)
 - `img`: RGB image matrix from render()
 
+# Keyword Arguments
+- `pixel_size_nm`: Physical scale in nm per pixel, embedded in the PNG `pHYs`
+  chunk so the saved file carries its own scale (readable by Fiji/ImageJ and by
+  any scalebar consumer). Pass a scalar for isotropic data, or `(x, y)` for
+  independent axis scales. `nothing` (default) writes no scale.
+
+  `pHYs` is a **PNG-only** field. Other formats accept no scale kwarg at all, so
+  a non-PNG target warns and saves without scale rather than failing the write.
+
 # Example
 ```julia
-img = render(smld, zoom=10)
-save_image("output.png", img)
+(img, info) = render(smld, zoom=10)
+save_image("output.png", img; pixel_size_nm=info.pixel_size_nm)
 ```
 """
-function save_image(filename::String, img::AbstractMatrix{<:Colorant})
+function save_image(filename::String, img::AbstractMatrix{<:Colorant};
+                    pixel_size_nm::Union{Nothing,Real,Tuple{<:Real,<:Real}} = nothing)
     # Clamp RGB values to [0,1] to avoid overflow errors
     # TODO: Fix this in rendering functions instead
     img_clamped = map(img) do pixel
@@ -530,8 +561,19 @@ function save_image(filename::String, img::AbstractMatrix{<:Colorant})
             clamp(pixel.b, 0.0, 1.0))
     end
 
-    # Save directly using FileIO (will dispatch to ImageIO)
-    FileIO.save(filename, img_clamped)
+    # Physical scale rides in the PNG pHYs chunk. Only PNG accepts the `dpi`
+    # kwarg — TIFF/JPEG throw a MethodError on it — so gate on the extension.
+    # render() passes pixel_size_nm on every save, including non-PNG targets,
+    # hence warn-and-continue: losing the scale must not lose the image.
+    if pixel_size_nm === nothing
+        FileIO.save(filename, img_clamped)
+    elseif lowercase(splitext(filename)[2]) == ".png"
+        FileIO.save(filename, img_clamped; dpi=_scale_to_dpi(pixel_size_nm))
+    else
+        @warn "Physical scale is embedded via the PNG pHYs chunk; \
+               $(splitext(filename)[2]) carries no scale." filename
+        FileIO.save(filename, img_clamped)
+    end
 
     return nothing
 end

@@ -427,4 +427,115 @@ end
         end
     end
 
+    @testset "Physical scale in PNG pHYs chunk" begin
+        # Read the pHYs chunk straight out of the file rather than trusting a
+        # library round-trip: this is the on-disk contract other tools read.
+        function read_phys(path)
+            bytes = read(path)
+            i = 9  # skip the 8-byte PNG signature
+            while i < length(bytes) - 8
+                len = Int(bytes[i]) << 24 | Int(bytes[i+1]) << 16 |
+                      Int(bytes[i+2]) << 8 | Int(bytes[i+3])
+                typ = String(bytes[i+4:i+7])
+                if typ == "pHYs"
+                    p = i + 8
+                    ppux = Int(bytes[p])   << 24 | Int(bytes[p+1]) << 16 |
+                           Int(bytes[p+2]) << 8  | Int(bytes[p+3])
+                    ppuy = Int(bytes[p+4]) << 24 | Int(bytes[p+5]) << 16 |
+                           Int(bytes[p+6]) << 8  | Int(bytes[p+7])
+                    return (ppux, ppuy, Int(bytes[p+8]))
+                end
+                i += 12 + len
+            end
+            return nothing
+        end
+
+        # nm per pixel recovered from a pHYs pixels-per-meter reading
+        nm_from_ppu(ppu) = 1e9 / ppu
+
+        emitters = [make_emitter2d(1.0, 1.0, 1000.0, 10.0, 0.01, 0.01, 50.0, 2.0),
+                    make_emitter2d(2.0, 2.0, 1200.0, 10.0, 0.01, 0.01, 50.0, 2.0)]
+        camera = IdealCamera(1:32, 1:32, 0.1)   # 100 nm pixels
+        smld = BasicSMLD(emitters, camera, 1, 1, Dict{String,Any}())
+
+        dir = mktempdir()
+
+        @testset "single-render save site" begin
+            f = joinpath(dir, "single.png")
+            (_, info) = render(smld; zoom=10, filename=f)
+
+            @test isfile(f)
+            phys = read_phys(f)
+            @test phys !== nothing
+            ppux, ppuy, unit = phys
+            @test unit == 1                       # 1 == meters
+            @test nm_from_ppu(ppux) ≈ info.pixel_size_nm rtol=1e-6
+            @test nm_from_ppu(ppuy) ≈ info.pixel_size_nm rtol=1e-6
+        end
+
+        @testset "overlay save site" begin
+            f = joinpath(dir, "overlay.png")
+            (_, info) = render([smld, smld];
+                               colors=[RGB(1.0, 0.0, 0.0), RGB(0.0, 1.0, 0.0)],
+                               zoom=10, filename=f)
+
+            @test isfile(f)
+            phys = read_phys(f)
+            @test phys !== nothing
+            ppux, ppuy, unit = phys
+            @test unit == 1
+            @test nm_from_ppu(ppux) ≈ info.pixel_size_nm rtol=1e-6
+        end
+
+        @testset "in-memory render writes nothing" begin
+            before = readdir(dir)
+            (img, _) = render(smld; zoom=10)     # no filename
+            @test img isa Matrix{RGB{Float64}}
+            @test readdir(dir) == before          # no file appeared anywhere
+        end
+
+        @testset "scale is opt-in on save_image" begin
+            (img, _) = render(smld; zoom=10)
+
+            # No pixel_size_nm -> no pHYs chunk at all.
+            bare = joinpath(dir, "bare.png")
+            save_image(bare, img)
+            @test read_phys(bare) === nothing
+
+            # Explicit scale -> pHYs present, even for a direct caller that
+            # never went through render() (the gap the kwarg exists to close).
+            scaled = joinpath(dir, "scaled.png")
+            save_image(scaled, img; pixel_size_nm=12.5)
+            ppux, _, _ = read_phys(scaled)
+            @test nm_from_ppu(ppux) ≈ 12.5 rtol=1e-6
+        end
+
+        @testset "anisotropic x/y scales stay independent" begin
+            (img, _) = render(smld; zoom=10)
+            f = joinpath(dir, "aniso.png")
+            save_image(f, img; pixel_size_nm=(10.7, 21.4))
+
+            ppux, ppuy, _ = read_phys(f)
+            @test nm_from_ppu(ppux) ≈ 10.7 rtol=1e-6
+            @test nm_from_ppu(ppuy) ≈ 21.4 rtol=1e-6
+            @test ppux != ppuy
+        end
+
+        @testset "non-PNG saves the image without scale" begin
+            (img, _) = render(smld; zoom=10)
+            f = joinpath(dir, "nonpng.tif")
+            # TIFF rejects the dpi kwarg; the image must still be written.
+            @test_logs (:warn,) save_image(f, img; pixel_size_nm=10.0)
+            @test isfile(f)
+        end
+
+        @testset "non-positive scale is rejected" begin
+            (img, _) = render(smld; zoom=10)
+            f = joinpath(dir, "bad.png")
+            @test_throws AssertionError save_image(f, img; pixel_size_nm=0.0)
+            @test_throws AssertionError save_image(f, img; pixel_size_nm=-5.0)
+            @test_throws AssertionError save_image(f, img; pixel_size_nm=(10.0, -1.0))
+        end
+    end
+
 end
