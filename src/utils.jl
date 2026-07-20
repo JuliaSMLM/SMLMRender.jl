@@ -504,7 +504,15 @@ function compose(images::Vector{Matrix{RGB{Float64}}}; blend::Symbol=:additive)
 end
 
 """
-    _scale_to_dpi(pixel_size_nm) -> Float64 or Tuple{Float64,Float64}
+    _supports_embedded_scale(filename) -> Bool
+
+Whether `filename`'s format can carry a physical scale we know how to write.
+Only PNG can: the scale rides in its `pHYs` chunk.
+"""
+_supports_embedded_scale(filename::String) = lowercase(splitext(filename)[2]) == ".png"
+
+"""
+    _scale_to_dpi(pixel_size_nm) -> dpi, or `nothing` if unrepresentable
 
 Convert a pixel size in nanometers to the dots-per-inch value that `PNGFiles`
 stores in the PNG `pHYs` chunk as pixels-per-meter.
@@ -512,16 +520,27 @@ stores in the PNG `pHYs` chunk as pixels-per-meter.
 A scalar gives isotropic scale; a `(x, y)` tuple gives independent axis scales
 (`pHYs` carries x and y separately, which is what an anisotropic xz/yz
 projection needs).
+
+`pHYs` holds pixels-per-meter in a `UInt32`, so scales outside that field's
+range cannot be written. Returns `nothing` for those rather than handing
+`PNGFiles` a value it will fail to convert — an unwritable scale must not cost
+the caller the image.
 """
 function _scale_to_dpi(pixel_size_nm::Real)
-    @assert pixel_size_nm > 0 "pixel_size_nm must be positive, got $pixel_size_nm"
+    @assert pixel_size_nm > 0 && isfinite(pixel_size_nm) "pixel_size_nm must be positive and finite, got $pixel_size_nm"
     # nm/px -> px/m is 1e9 / nm; dpi is px/m * 0.0254
-    return 0.0254e9 / pixel_size_nm
+    ppu = round(1e9 / pixel_size_nm)
+    # Below 1 the field would round to zero, which reads back as an infinite
+    # scale; above typemax it does not fit at all.
+    (ppu < 1 || ppu > typemax(UInt32)) && return nothing
+    return 0.0254 * (1e9 / pixel_size_nm)
 end
 
 function _scale_to_dpi(pixel_size_nm::Tuple{<:Real,<:Real})
-    @assert pixel_size_nm[1] > 0 && pixel_size_nm[2] > 0 "pixel_size_nm must be positive, got $pixel_size_nm"
-    return (0.0254e9 / pixel_size_nm[1], 0.0254e9 / pixel_size_nm[2])
+    dpi_x = _scale_to_dpi(pixel_size_nm[1])
+    dpi_y = _scale_to_dpi(pixel_size_nm[2])
+    (dpi_x === nothing || dpi_y === nothing) && return nothing
+    return (dpi_x, dpi_y)
 end
 
 """
@@ -563,16 +582,24 @@ function save_image(filename::String, img::AbstractMatrix{<:Colorant};
 
     # Physical scale rides in the PNG pHYs chunk. Only PNG accepts the `dpi`
     # kwarg — TIFF/JPEG throw a MethodError on it — so gate on the extension.
-    # render() passes pixel_size_nm on every save, including non-PNG targets,
-    # hence warn-and-continue: losing the scale must not lose the image.
+    # Every branch below still writes the image: a scale we cannot record must
+    # not cost the caller their render.
     if pixel_size_nm === nothing
         FileIO.save(filename, img_clamped)
-    elseif lowercase(splitext(filename)[2]) == ".png"
-        FileIO.save(filename, img_clamped; dpi=_scale_to_dpi(pixel_size_nm))
-    else
+    elseif !_supports_embedded_scale(filename)
         @warn "Physical scale is embedded via the PNG pHYs chunk; \
                $(splitext(filename)[2]) carries no scale." filename
         FileIO.save(filename, img_clamped)
+    else
+        dpi = _scale_to_dpi(pixel_size_nm)
+        if dpi === nothing
+            @warn "pixel_size_nm=$(pixel_size_nm) is outside the range the PNG pHYs \
+                   chunk can represent (pixels-per-meter must fit a UInt32); \
+                   saving without scale." filename
+            FileIO.save(filename, img_clamped)
+        else
+            FileIO.save(filename, img_clamped; dpi=dpi)
+        end
     end
 
     return nothing

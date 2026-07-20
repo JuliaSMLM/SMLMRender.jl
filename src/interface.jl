@@ -66,9 +66,12 @@ function render(smld, config::RenderConfig)
                           field_range=info.field_range, scalebar_length_um=sb_length)
     end
 
-    # Save to file if requested
+    # Save to file if requested. Only offer the scale to formats that can hold
+    # it — the user asked for an image, not for a warning about metadata.
     if config.filename !== nothing
-        save_image(config.filename, img; pixel_size_nm=info.pixel_size_nm)
+        save_image(config.filename, img;
+                   pixel_size_nm = _supports_embedded_scale(config.filename) ?
+                                   info.pixel_size_nm : nothing)
     end
 
     return (img, info)
@@ -318,9 +321,12 @@ function render_overlay(smlds::Vector, colors::Vector;
                           field_range=info.field_range, scalebar_length_um=sb_length)
     end
 
-    # Save to file if requested
+    # Save to file if requested. Only offer the scale to formats that can hold
+    # it — the user asked for an image, not for a warning about metadata.
     if filename !== nothing
-        save_image(filename, combined; pixel_size_nm=info.pixel_size_nm)
+        save_image(filename, combined;
+                   pixel_size_nm = _supports_embedded_scale(filename) ?
+                                   info.pixel_size_nm : nothing)
     end
 
     return (combined, info)

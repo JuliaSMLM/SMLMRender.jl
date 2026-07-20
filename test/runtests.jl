@@ -529,6 +529,57 @@ end
             @test isfile(f)
         end
 
+        @testset "render does not warn on a non-PNG target" begin
+            # render() must not nag about metadata the user never asked for:
+            # it only offers the scale to formats that can hold it.
+            f = joinpath(dir, "quiet.tif")
+            @test_logs render(smld; zoom=2, filename=f)
+            @test isfile(f)
+            @test filesize(f) > 0
+        end
+
+        @testset "unrepresentable scale still writes the image" begin
+            (img, _) = render(smld; zoom=10)
+
+            # pHYs holds pixels-per-meter in a UInt32. Scales past either end
+            # of that field must degrade to "no scale", never to a lost image.
+            for bad in (0.2, 0.1, 1e-6,   # too fine: ppu overflows UInt32
+                        2e9, 1e12)        # too coarse: ppu rounds to zero
+                f = joinpath(dir, "unrep_$(bad).png")
+                @test_logs (:warn,) save_image(f, img; pixel_size_nm=bad)
+                @test isfile(f)
+                @test filesize(f) > 0          # a real PNG, not a 0-byte stub
+                @test read_phys(f) === nothing # and no misleading chunk
+            end
+
+            # Just inside the representable range still gets a real scale.
+            f = joinpath(dir, "fine_ok.png")
+            save_image(f, img; pixel_size_nm=0.25)
+            ppux, _, _ = read_phys(f)
+            @test nm_from_ppu(ppux) ≈ 0.25 rtol=1e-6
+        end
+
+        @testset "high zoom saves rather than throwing" begin
+            # Regression: zoom past ~430 on a 100 nm camera drove pixel size
+            # below the UInt32 pHYs floor and threw out of render(), costing
+            # the caller both the image and the returned (img, info).
+            for z in (400, 430, 1000)
+                f = joinpath(dir, "zoom_$(z).png")
+                (img, info) = render(smld; zoom=z, roi=(1:2, 1:2), filename=f)
+                @test img isa Matrix{RGB{Float64}}
+                @test info.pixel_size_nm > 0
+                @test isfile(f)
+                @test filesize(f) > 0
+            end
+        end
+
+        @testset "non-finite scale is rejected" begin
+            (img, _) = render(smld; zoom=10)
+            f = joinpath(dir, "nonfinite.png")
+            @test_throws AssertionError save_image(f, img; pixel_size_nm=Inf)
+            @test_throws AssertionError save_image(f, img; pixel_size_nm=NaN)
+        end
+
         @testset "non-positive scale is rejected" begin
             (img, _) = render(smld; zoom=10)
             f = joinpath(dir, "bad.png")
