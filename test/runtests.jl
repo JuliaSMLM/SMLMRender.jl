@@ -491,7 +491,7 @@ end
             before = readdir(dir)
             (img, _) = render(smld; zoom=10)     # no filename
             @test img isa Matrix{RGB{Float64}}
-            @test readdir(dir) == before          # no file appeared anywhere
+            @test readdir(dir) == before          # nothing new in the output dir
         end
 
         @testset "scale is opt-in on save_image" begin
@@ -563,13 +563,26 @@ end
             # Regression: zoom past ~430 on a 100 nm camera drove pixel size
             # below the UInt32 pHYs floor and threw out of render(), costing
             # the caller both the image and the returned (img, info).
-            for z in (400, 430, 1000)
+            # `scaled` records which side of that boundary each zoom lands on,
+            # so this pins where the scale stops being written — not merely
+            # that a file appeared.
+            for (z, scaled) in ((400, true), (430, false), (1000, false))
                 f = joinpath(dir, "zoom_$(z).png")
-                (img, info) = render(smld; zoom=z, roi=(1:2, 1:2), filename=f)
+                (img, info) = scaled ?
+                    render(smld; zoom=z, roi=(1:2, 1:2), filename=f) :
+                    @test_logs((:warn,), render(smld; zoom=z, roi=(1:2, 1:2), filename=f))
+
                 @test img isa Matrix{RGB{Float64}}
                 @test info.pixel_size_nm > 0
                 @test isfile(f)
                 @test filesize(f) > 0
+
+                if scaled
+                    ppux, _, _ = read_phys(f)
+                    @test nm_from_ppu(ppux) ≈ info.pixel_size_nm rtol=1e-6
+                else
+                    @test read_phys(f) === nothing
+                end
             end
         end
 
