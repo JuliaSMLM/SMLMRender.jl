@@ -78,7 +78,7 @@ For complete SMLM workflows (detection + fitting + frame-connection + rendering)
 | `clip_percentile` | `0.99` | Intensity clipping (percentile of non-zero pixels) |
 | `field_range` | `:auto` | Value range for field coloring, or explicit `(min, max)` |
 | `field_clip_percentiles` | `(0.01, 0.99)` | Percentile clipping for field range |
-| `filename` | `nothing` | Save to file if provided |
+| `filename` | `nothing` | Save to file if provided (PNG carries its scale in the `pHYs` chunk) |
 
 ```julia
 # Config struct (reusable, composable)
@@ -133,7 +133,7 @@ config = RenderConfig(
 
 ```julia
 (img, info) = render(smld, color_by=:z, colormap=:turbo, zoom=20)
-save_image("output.png", img)
+save_image("output.png", img; pixel_size_nm=info.pixel_size_nm)  # PNG embeds the scale (pHYs)
 
 # Use field_range for colorbar annotation
 export_colorbar(:turbo, info.field_range, "Z-depth (um)", "colorbar.png")
