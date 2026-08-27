@@ -438,7 +438,7 @@ Flat rendering configuration. Fields correspond 1:1 with `render()` keyword argu
 - `field_range::Union{Tuple{Float64,Float64}, Symbol}`: Value range or `:auto`
 - `field_clip_percentiles::Union{Tuple{Float64,Float64}, Nothing}`: Percentile clipping
 - `backend::Symbol`: Computation backend (default: `:cpu`)
-- `filename::Union{String, Nothing}`: Save to file if provided
+- `filename::Union{String, Nothing}`: Save to file if provided (PNG saves embed the physical scale in the `pHYs` chunk)
 - `scalebar::Bool`: Enable scale bar overlay (default: `false`)
 - `scalebar_length::Union{Float64, Nothing}`: Physical length in μm (`nothing` = auto)
 - `scalebar_position::Symbol`: Corner position (`:br`, `:bl`, `:tr`, `:tl`)

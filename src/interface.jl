@@ -112,7 +112,8 @@ Convenience rendering interface. All keyword arguments match `RenderConfig` fiel
 - `clip_percentile`: Percentile for intensity clipping (default: 0.99)
 - `field_range`: Value range or :auto (default: :auto)
 - `field_clip_percentiles`: Percentile clipping tuple (default: (0.01, 0.99))
-- `filename`: Save directly to file if provided
+- `filename`: Save directly to file if provided. PNG saves embed the physical
+  scale (`pixel_size_nm`) in the file's `pHYs` chunk, making them self-describing
 - `scalebar`: Enable scale bar overlay (default: false)
 - `scalebar_length`: Physical length in μm (nothing = auto)
 - `scalebar_position`: Corner position (:br, :bl, :tr, :tl)
