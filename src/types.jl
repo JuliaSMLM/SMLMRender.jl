@@ -49,7 +49,8 @@ even when its sigma is a fraction of a pixel.
 - `fixed_sigma::Union{Float64, Nothing}`: Fixed sigma in nm (if not using precision)
 - `normalization::Symbol`: `:integral` (each localization sums to 1, apart from
   the mass beyond `n_sigmas`) or `:maximum` (each localization's brightest pixel
-  is 1, wherever it falls and whatever its sigma)
+  is 1, wherever it falls and whatever its sigma; its total then depends on where
+  it falls in a pixel, by up to about 26% at a 1-pixel sigma)
 
 # Examples
 ```julia

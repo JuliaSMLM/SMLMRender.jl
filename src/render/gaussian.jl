@@ -322,7 +322,9 @@ beyond the pixels next to the center.
 - `normalization = :maximum`: the same pixel integrals scaled so the
   localization's brightest pixel is 1, wherever it falls and whatever its sigma.
   The peak is taken over the whole window, so a localization just outside the
-  image still shows only its dim tail.
+  image still shows only its dim tail. Because the peak is fixed, the total
+  depends on where the localization falls in a pixel (by up to about 26% at a
+  1-pixel sigma, more below); use `:integral` for position-independent totals.
 
 Uncorrelated x and y use the exact product of normal-CDF differences. A
 correlation `|ρ| < 0.01` adds its first-order term (error below 1.2e-5 of the
@@ -343,19 +345,26 @@ function foreach_gaussian_pixel(f::F, emitter, target::Image2DTarget,
     sy = sigma_y / target.pixel_size
     sxy = sigma_xy / target.pixel_size^2
 
-    # Whole window (not clipped to the image, so :maximum sees the true peak)
     half_width = ceil(Int, n_sigmas * max(sx, sy))
     j_lo = floor(Int, x0) - half_width
     j_hi = ceil(Int, x0) + half_width
     i_lo = floor(Int, y0) - half_width
     i_hi = ceil(Int, y0) + half_width
     (j_hi < 1 || j_lo > target.width || i_hi < 1 || i_lo > target.height) && return nothing
+    peak = normalization === :maximum
+    if !peak
+        # :integral needs only the in-image pixels; :maximum keeps the whole
+        # window so it sees the true peak.
+        j_lo = max(j_lo, 1)
+        j_hi = min(j_hi, target.width)
+        i_lo = max(i_lo, 1)
+        i_hi = min(i_hi, target.height)
+    end
     n_cols = j_hi - j_lo + 1
     n_rows = i_hi - i_lo + 1
 
     det = sx^2 * sy^2 - sxy^2
     ρ = det > 0 ? sxy / (sx * sy) : 0.0   # not positive definite: axis-aligned
-    peak = normalization === :maximum
 
     if abs(ρ) < _RHO_FIRST_ORDER
         # ΔΦ and Δφ across each column's and each row's standardized edges

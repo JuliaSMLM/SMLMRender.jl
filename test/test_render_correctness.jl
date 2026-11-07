@@ -188,6 +188,18 @@ end
         # ...and the peak is the whole window's: a localization 3 px outside the
         # frame shows only its dim tail.
         @test 0 < maximum(red, blob_sum(-0.025, 0.205, 10.0; normalization=:maximum)) < 0.05
+        # A blob cut by the frame edge has the same in-frame pixels as in a larger
+        # frame, on both kernel paths and both normalizations.
+        for ρ in (0.0, 0.5), normalization in (:integral, :maximum)
+            e = Emitter2DFit{Float64}(0.012, 0.207, 1000.0, 10.0, 0.020, 0.012, 50.0, 2.0;
+                                      σ_xy=ρ * 0.020 * 0.012)
+            smld = BasicSMLD([e], IdealCamera(4, 4, 0.1), 1, 1)
+            cfg = RenderConfig(color=:white, clip_percentile=nothing,
+                               strategy=GaussianRender(normalization=normalization))
+            (big, _) = render(smld, Image2DTarget(60, 41, 10.0, (-0.19, 0.41), (0.0, 0.41)), cfg)
+            (cut, _) = render(smld, Image2DTarget(41, 41, 10.0, (0.0, 0.41), (0.0, 0.41)), cfg)
+            @test map(red, cut) ≈ map(red, big[:, 20:60])
+        end
     end
 
     @testset "M3: ellipse outline is the covariance ellipse" begin
@@ -239,10 +251,11 @@ end
         square = BasicSMLD([emitter_at(0.25, 0.75)], IdealCamera(16, 8, 0.1), 1, 1)
         (img_sq, _) = render(square; zoom=10)
         @test size(img_sq) == (80, 160)
-        # A square Float32 camera far from the origin: rounding of its edges must
-        # not trip the check.
-        far = IdealCamera{Float32}(Float32.(1000 .+ 0.1 .* (0:16)), Float32.(1000 .+ 0.1 .* (0:8)))
-        e_far = Emitter2DFit{Float32}(1000.25f0, 1000.35f0, 1000f0, 10f0, 0.01f0, 0.01f0, 50f0, 2f0)
+        # A square Float32 camera whose x edges start far from the origin: their
+        # rounding (first spacing 99.976 nm against 100.000 nm in y) must not trip
+        # the check.
+        far = IdealCamera{Float32}(Float32.(1000 .+ 0.1 .* (0:16)), Float32.(0.1 .* (0:8)))
+        e_far = Emitter2DFit{Float32}(1000.25f0, 0.35f0, 1000f0, 10f0, 0.01f0, 0.01f0, 50f0, 2f0)
         (img_far, _) = render(BasicSMLD([e_far], far, 1, 1); zoom=10)
         @test size(img_far) == (80, 160)
     end
