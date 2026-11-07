@@ -1,6 +1,7 @@
 # Gaussian blob rendering for SMLMRender.jl
 
 using Colors
+using SpecialFunctions: erfc, erfcinv
 
 """
     render_gaussian(smld, target::Image2DTarget, strategy::GaussianRender,
@@ -20,14 +21,16 @@ Provides smooth, publication-quality images with sub-pixel accuracy.
 Returns Matrix{RGB{Float64}}
 """
 function render_gaussian(smld, target::Image2DTarget, strategy::GaussianRender,
-                        color_mapping::ColorMapping; clip_percentile::Float64=0.99)
+                        color_mapping::ColorMapping;
+                        clip_percentile::Union{Float64, Nothing}=0.99)
     if color_mapping isa IntensityColorMapping
         return render_gaussian_intensity(smld, target, strategy, color_mapping)
     elseif color_mapping isa FieldColorMapping
         return render_gaussian_field(smld, target, strategy, color_mapping;
                                     clip_percentile=clip_percentile)
     elseif color_mapping isa ManualColorMapping
-        return render_gaussian_manual(smld, target, strategy, color_mapping)
+        return render_gaussian_manual(smld, target, strategy, color_mapping;
+                                      clip_percentile=clip_percentile)
     elseif color_mapping isa GrayscaleMapping
         return render_gaussian_grayscale(smld, target, strategy)
     elseif color_mapping isa CategoricalColorMapping
@@ -80,7 +83,7 @@ Each blob is colored according to its field value.
 function render_gaussian_field(smld, target::Image2DTarget,
                               strategy::GaussianRender,
                               mapping::FieldColorMapping;
-                              clip_percentile::Float64=0.99)
+                              clip_percentile::Union{Float64, Nothing}=0.99)
     # Use intensity-weighted color algorithm
     # Track both intensity and color numerators for proper weighting
 
@@ -121,14 +124,21 @@ function render_gaussian_field(smld, target::Image2DTarget,
 end
 
 """
-    render_gaussian_manual(smld, target, strategy, mapping::ManualColorMapping)
+    render_gaussian_manual(smld, target, strategy, mapping::ManualColorMapping;
+                           clip_percentile=0.99)
 
 Gaussian render with single manual color.
+
+Process: accumulate Gaussian intensity → clip at `clip_percentile` of non-zero
+pixels → normalize to [0, 1] → multiply by the color, as the histogram path does.
+`clip_percentile=nothing` is saturate mode: the raw accumulated intensity times
+the color, which can exceed 1.
 """
 function render_gaussian_manual(smld, target::Image2DTarget,
                                 strategy::GaussianRender,
-                                mapping::ManualColorMapping)
-    result = zeros(RGB{Float64}, target.height, target.width)
+                                mapping::ManualColorMapping;
+                                clip_percentile::Union{Float64, Nothing}=0.99)
+    intensity = zeros(Float64, target.height, target.width)
 
     for emitter in smld.emitters
         sigma_x, sigma_y, sigma_xy = get_emitter_covariance(emitter, strategy)
@@ -137,11 +147,20 @@ function render_gaussian_manual(smld, target::Image2DTarget,
             continue
         end
 
-        render_gaussian_blob_colored!(result, emitter, target, sigma_x, sigma_y,
-                                     strategy.n_sigmas, strategy.normalization,
-                                     mapping.color; sigma_xy=sigma_xy)
+        render_gaussian_blob!(intensity, emitter, target, sigma_x, sigma_y,
+                            strategy.n_sigmas, strategy.normalization, 1.0;
+                            sigma_xy=sigma_xy)
     end
 
+    if clip_percentile !== nothing
+        clip_at_percentile(intensity, clip_percentile)
+        intensity = normalize_to_01(intensity)
+    end
+
+    result = Matrix{RGB{Float64}}(undef, target.height, target.width)
+    @inbounds for i in eachindex(intensity)
+        result[i] = mapping.color * intensity[i]
+    end
     return result
 end
 
@@ -187,7 +206,7 @@ Each blob is colored by its integer field value using modular palette indexing.
 function render_gaussian_categorical(smld, target::Image2DTarget,
                                      strategy::GaussianRender,
                                      mapping::CategoricalColorMapping;
-                                     clip_percentile::Float64=0.99)
+                                     clip_percentile::Union{Float64, Nothing}=0.99)
     # Use intensity-weighted color algorithm (same as field coloring)
     intensity = zeros(Float64, target.height, target.width)
     r_num = zeros(Float64, target.height, target.width)
@@ -273,13 +292,138 @@ function get_emitter_covariance(emitter, strategy::GaussianRender)
     return (sigma_x, sigma_y, sigma_xy)
 end
 
+# ============================================================================
+# Pixel-integrated Gaussian kernel (shared by every Gaussian color mode)
+# ============================================================================
+
+# Standard normal CDF, density and quantile.
+@inline _normcdf(t::Float64) = 0.5 * erfc(-t * 0.7071067811865476)
+@inline _normpdf(t::Float64) = 0.3989422804014327 * exp(-0.5 * t^2)
+@inline _norminv(u::Float64) = -1.4142135623730951 * erfcinv(2.0 * u)
+
+# 8-point Gauss–Legendre rule on [-1, 1].
+const _GL_NODES = (-0.9602898564975363, -0.7966664774136267, -0.5255324099163290,
+                   -0.1834346424956498,  0.1834346424956498,  0.5255324099163290,
+                    0.7966664774136267,  0.9602898564975363)
+const _GL_WEIGHTS = (0.1012285362903763, 0.2223810344533745, 0.3137066458778873,
+                     0.3626837833783620, 0.3626837833783620, 0.3137066458778873,
+                     0.2223810344533745, 0.1012285362903763)
+
+# Below this |correlation| a pixel's mass uses the bivariate normal's expansion to
+# first order in ρ: P = ΔΦx·ΔΦy + ρ·Δφx·Δφy (Δ = difference across the pixel's
+# standardized edges; ∂Φ₂/∂ρ = φ₂). The next term, (ρ²/2)·Δ(hφ(h))·Δ(kφ(k)), is
+# at most 0.12ρ², so the error stays under 1.2e-5 of the localization's mass per
+# pixel. Fitted σ_xy is small but almost never exactly zero (SeqSR lab data:
+# median |ρ| 1e-3, 99th percentile 0.01), so this keeps fitted data on the fast path.
+const _RHO_FIRST_ORDER = 0.01
+
+"""
+    foreach_gaussian_pixel(f, emitter, target, sigma_x, sigma_y, n_sigmas,
+                           normalization; sigma_xy=0.0)
+
+Call `f(i, j, w)` for each pixel `(i, j)` in a localization's window, where `w`
+is the localization's 2D Gaussian (covariance `[σx² σxy; σxy σy²]`, nm and nm²)
+integrated over that pixel. The window spans `n_sigmas` of the larger sigma
+beyond the pixels next to the center, clipped to the image.
+
+`normalization = :integral` gives each localization unit mass (exactly, apart
+from the window truncation), wherever it falls inside a pixel and however small
+its sigma. `:maximum` scales that by `2π·sqrt(det Σ)` (pixel units), so each
+pixel is the pixel average of a peak-1 Gaussian: about 1 at the peak for sigmas
+of a pixel or more, and less for sigmas below a pixel.
+
+Uncorrelated x and y use the exact product of error-function differences; a
+correlation `|ρ| < 0.01` adds its first-order term (error below 1.2e-5 of the
+localization's mass per pixel). Stronger correlations integrate the conditional
+x-distribution over each row with an 8-point Gauss–Legendre rule in
+`u = Φ((y - y0)/σy)`, which keeps each row's mass exact. A covariance that is not
+positive definite falls back to the axis-aligned Gaussian.
+"""
+function foreach_gaussian_pixel(f::F, emitter, target::Image2DTarget,
+                                sigma_x::Float64, sigma_y::Float64,
+                                n_sigmas::Float64, normalization::Symbol;
+                                sigma_xy::Float64=0.0) where {F}
+    x0, y0 = physical_to_pixel(emitter.x, emitter.y, target)
+    x0 = Float64(x0)
+    y0 = Float64(y0)
+
+    # Sigmas in pixels
+    sx = sigma_x / target.pixel_size
+    sy = sigma_y / target.pixel_size
+    sxy = sigma_xy / target.pixel_size^2
+
+    half_width = ceil(Int, n_sigmas * max(sx, sy))
+    j_min = max(1, floor(Int, x0) - half_width)
+    j_max = min(target.width, ceil(Int, x0) + half_width)
+    i_min = max(1, floor(Int, y0) - half_width)
+    i_max = min(target.height, ceil(Int, y0) + half_width)
+    (j_min > j_max || i_min > i_max) && return nothing
+
+    det = sx^2 * sy^2 - sxy^2
+    if det <= 0
+        sxy = 0.0
+        det = sx^2 * sy^2
+    end
+    scale = normalization === :integral ? 1.0 : 2π * sqrt(det)
+    ρ = sxy / (sx * sy)
+
+    if abs(ρ) < _RHO_FIRST_ORDER
+        inv_sx = 1.0 / sx
+        inv_sy = 1.0 / sy
+        @inbounds for j in j_min:j_max
+            hl = (j - 0.5 - x0) * inv_sx
+            hr = (j + 0.5 - x0) * inv_sx
+            wx = scale * (_normcdf(hr) - _normcdf(hl))
+            dx = scale * ρ * (_normpdf(hr) - _normpdf(hl))
+            k_lo = (i_min - 0.5 - y0) * inv_sy
+            c_lo = _normcdf(k_lo)
+            p_lo = _normpdf(k_lo)
+            for i in i_min:i_max
+                k_hi = (i + 0.5 - y0) * inv_sy
+                c_hi = _normcdf(k_hi)
+                p_hi = _normpdf(k_hi)
+                # max(…, 0): the first-order term can only push a far-tail pixel of
+                # a strongly anisotropic blob below zero, by a negligible amount
+                f(i, j, max(wx * (c_hi - c_lo) + dx * (p_hi - p_lo), 0.0))
+                c_lo = c_hi
+                p_lo = p_hi
+            end
+        end
+    else
+        # x | y is normal with mean x0 + β (y - y0) and variance det / σy².
+        β_sy = sxy / sy        # β · σy, with β = σxy / σy²
+        inv_s = sy / sqrt(det)
+        inv_sy = 1.0 / sy
+        u_lo = _normcdf((i_min - 0.5 - y0) * inv_sy)
+        @inbounds for i in i_min:i_max
+            u_hi = _normcdf((i + 0.5 - y0) * inv_sy)
+            half = 0.5 * (u_hi - u_lo)
+            if half > 0
+                mid = 0.5 * (u_hi + u_lo)
+                m = ntuple(k -> x0 + β_sy * _norminv(mid + half * _GL_NODES[k]), Val(8))
+                c_prev = ntuple(k -> _normcdf((j_min - 0.5 - m[k]) * inv_s), Val(8))
+                for j in j_min:j_max
+                    c_next = ntuple(k -> _normcdf((j + 0.5 - m[k]) * inv_s), Val(8))
+                    acc = 0.0
+                    for k in 1:8
+                        acc += _GL_WEIGHTS[k] * (c_next[k] - c_prev[k])
+                    end
+                    f(i, j, scale * half * acc)
+                    c_prev = c_next
+                end
+            end
+            u_lo = u_hi
+        end
+    end
+    return nothing
+end
+
 """
     render_gaussian_blob!(img::Matrix{Float64}, emitter, target, sigma_x, sigma_y,
                          n_sigmas, normalization, weight; sigma_xy=0.0)
 
-Render a single Gaussian blob to grayscale accumulator.
-
-Supports rotated Gaussians when σ_xy (covariance) is non-zero.
+Add one localization's pixel-integrated Gaussian, times `weight`, to a grayscale
+accumulator. See [`foreach_gaussian_pixel`](@ref) for the kernel.
 
 # Arguments
 - `img`: Accumulator (modified in-place)
@@ -288,130 +432,16 @@ Supports rotated Gaussians when σ_xy (covariance) is non-zero.
 - `sigma_x, sigma_y`: Standard deviations in nm
 - `n_sigmas`: How many σ to render
 - `normalization`: :integral or :maximum
-- `weight`: Multiplicative weight (default: 1.0)
+- `weight`: Multiplicative weight
 - `sigma_xy`: Covariance in nm² (default: 0.0 for axis-aligned)
 """
 function render_gaussian_blob!(img::Matrix{Float64}, emitter, target::Image2DTarget,
                                sigma_x::Float64, sigma_y::Float64,
                                n_sigmas::Float64, normalization::Symbol,
                                weight::Float64; sigma_xy::Float64=0.0)
-    # Convert emitter position to continuous pixel coordinates
-    x_pixel, y_pixel = physical_to_pixel(emitter.x, emitter.y, target)
-
-    # Convert sigma from nm to pixels
-    sigma_x_pix = sigma_x / target.pixel_size
-    sigma_y_pix = sigma_y / target.pixel_size
-    sigma_xy_pix = sigma_xy / target.pixel_size^2  # nm² to pix²
-
-    # Determine bounding box (use larger sigma for rotated case)
-    max_sigma = max(sigma_x_pix, sigma_y_pix)
-    half_width = ceil(Int, n_sigmas * max_sigma)
-
-    j_min = max(1, floor(Int, x_pixel) - half_width)
-    j_max = min(target.width, ceil(Int, x_pixel) + half_width)
-    i_min = max(1, floor(Int, y_pixel) - half_width)
-    i_max = min(target.height, ceil(Int, y_pixel) + half_width)
-
-    # Covariance matrix: Σ = [σ_x²   σ_xy]
-    #                        [σ_xy   σ_y²]
-    var_x = sigma_x_pix^2
-    var_y = sigma_y_pix^2
-    det = var_x * var_y - sigma_xy_pix^2
-
-    # Check for valid covariance (positive definite)
-    if det <= 0
-        # Fall back to axis-aligned if covariance is invalid
-        sigma_xy_pix = 0.0
-        det = var_x * var_y
-    end
-
-    # Inverse covariance matrix elements (scaled by 0.5 for exponent)
-    # Σ⁻¹ = (1/det) * [σ_y²   -σ_xy]
-    #                  [-σ_xy   σ_x²]
-    inv_det_half = 0.5 / det
-    a = var_y * inv_det_half      # coefficient for dx²
-    b = -sigma_xy_pix * inv_det_half  # coefficient for dx*dy (×2)
-    c = var_x * inv_det_half      # coefficient for dy²
-
-    # Normalization factor
-    if normalization == :integral
-        # 1 / (2π * sqrt(det))
-        norm_factor = weight / (2π * sqrt(det))
-    else  # :maximum
-        norm_factor = weight
-    end
-
-    # Render blob
-    for i in i_min:i_max, j in j_min:j_max
-        # Distance from blob center
-        dx = Float64(j) - x_pixel
-        dy = Float64(i) - y_pixel
-
-        # Gaussian value: exp(-0.5 * [dx,dy] * Σ⁻¹ * [dx,dy]')
-        exponent = -(a * dx^2 + 2.0 * b * dx * dy + c * dy^2)
-        value = exp(exponent) * norm_factor
-
-        # Accumulate
-        img[i, j] += value
-    end
-end
-
-"""
-    render_gaussian_blob_colored!(img::Matrix{RGB{Float64}}, emitter, target,
-                                  sigma_x, sigma_y, n_sigmas, normalization, color;
-                                  sigma_xy=0.0)
-
-Render a single Gaussian blob to RGB accumulator with specified color.
-
-Supports rotated Gaussians when σ_xy (covariance) is non-zero.
-"""
-function render_gaussian_blob_colored!(img::Matrix{RGB{Float64}}, emitter,
-                                      target::Image2DTarget,
-                                      sigma_x::Float64, sigma_y::Float64,
-                                      n_sigmas::Float64, normalization::Symbol,
-                                      color::RGB{Float64}; sigma_xy::Float64=0.0)
-    x_pixel, y_pixel = physical_to_pixel(emitter.x, emitter.y, target)
-
-    sigma_x_pix = sigma_x / target.pixel_size
-    sigma_y_pix = sigma_y / target.pixel_size
-    sigma_xy_pix = sigma_xy / target.pixel_size^2
-
-    max_sigma = max(sigma_x_pix, sigma_y_pix)
-    half_width = ceil(Int, n_sigmas * max_sigma)
-
-    j_min = max(1, floor(Int, x_pixel) - half_width)
-    j_max = min(target.width, ceil(Int, x_pixel) + half_width)
-    i_min = max(1, floor(Int, y_pixel) - half_width)
-    i_max = min(target.height, ceil(Int, y_pixel) + half_width)
-
-    var_x = sigma_x_pix^2
-    var_y = sigma_y_pix^2
-    det = var_x * var_y - sigma_xy_pix^2
-
-    if det <= 0
-        sigma_xy_pix = 0.0
-        det = var_x * var_y
-    end
-
-    inv_det_half = 0.5 / det
-    a = var_y * inv_det_half
-    b = -sigma_xy_pix * inv_det_half
-    c = var_x * inv_det_half
-
-    if normalization == :integral
-        norm_factor = 1.0 / (2π * sqrt(det))
-    else
-        norm_factor = 1.0
-    end
-
-    for i in i_min:i_max, j in j_min:j_max
-        dx = Float64(j) - x_pixel
-        dy = Float64(i) - y_pixel
-
-        exponent = -(a * dx^2 + 2.0 * b * dx * dy + c * dy^2)
-        value = exp(exponent) * norm_factor
-
-        img[i, j] += color * value
+    foreach_gaussian_pixel(emitter, target, sigma_x, sigma_y, n_sigmas, normalization;
+                           sigma_xy=sigma_xy) do i, j, w
+        @inbounds img[i, j] += weight * w
     end
 end
 
@@ -420,10 +450,9 @@ end
                                    sigma_x, sigma_y, n_sigmas, normalization, color;
                                    sigma_xy=0.0)
 
-Render Gaussian blob accumulating both intensity and color numerators.
-This enables intensity-weighted color rendering.
-
-Supports rotated Gaussians when σ_xy (covariance) is non-zero.
+Add one localization's pixel-integrated Gaussian to the intensity accumulator and
+its color, weighted the same way, to the color numerators (intensity-weighted
+color rendering). See [`foreach_gaussian_pixel`](@ref) for the kernel.
 """
 function render_gaussian_blob_weighted!(intensity::Matrix{Float64},
                                        r_num::Matrix{Float64},
@@ -433,50 +462,13 @@ function render_gaussian_blob_weighted!(intensity::Matrix{Float64},
                                        sigma_x::Float64, sigma_y::Float64,
                                        n_sigmas::Float64, normalization::Symbol,
                                        color::RGB{Float64}; sigma_xy::Float64=0.0)
-    x_pixel, y_pixel = physical_to_pixel(emitter.x, emitter.y, target)
-
-    sigma_x_pix = sigma_x / target.pixel_size
-    sigma_y_pix = sigma_y / target.pixel_size
-    sigma_xy_pix = sigma_xy / target.pixel_size^2
-
-    max_sigma = max(sigma_x_pix, sigma_y_pix)
-    half_width = ceil(Int, n_sigmas * max_sigma)
-
-    j_min = max(1, floor(Int, x_pixel) - half_width)
-    j_max = min(target.width, ceil(Int, x_pixel) + half_width)
-    i_min = max(1, floor(Int, y_pixel) - half_width)
-    i_max = min(target.height, ceil(Int, y_pixel) + half_width)
-
-    var_x = sigma_x_pix^2
-    var_y = sigma_y_pix^2
-    det = var_x * var_y - sigma_xy_pix^2
-
-    if det <= 0
-        sigma_xy_pix = 0.0
-        det = var_x * var_y
-    end
-
-    inv_det_half = 0.5 / det
-    a = var_y * inv_det_half
-    b = -sigma_xy_pix * inv_det_half
-    c = var_x * inv_det_half
-
-    if normalization == :integral
-        norm_factor = 1.0 / (2π * sqrt(det))
-    else
-        norm_factor = 1.0
-    end
-
-    for i in i_min:i_max, j in j_min:j_max
-        dx = Float64(j) - x_pixel
-        dy = Float64(i) - y_pixel
-
-        exponent = -(a * dx^2 + 2.0 * b * dx * dy + c * dy^2)
-        w = exp(exponent) * norm_factor
-
-        intensity[i, j] += w
-        r_num[i, j] += w * color.r
-        g_num[i, j] += w * color.g
-        b_num[i, j] += w * color.b
+    foreach_gaussian_pixel(emitter, target, sigma_x, sigma_y, n_sigmas, normalization;
+                           sigma_xy=sigma_xy) do i, j, w
+        @inbounds begin
+            intensity[i, j] += w
+            r_num[i, j] += w * color.r
+            g_num[i, j] += w * color.g
+            b_num[i, j] += w * color.b
+        end
     end
 end

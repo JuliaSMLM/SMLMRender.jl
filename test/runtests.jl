@@ -187,29 +187,9 @@ end
     end
 
     @testset "Overlay clip_percentile applies per-channel" begin
-        # Test _clip_rgb_channels directly: create an RGB image with a known outlier
-        # and verify clipping reduces its value
-        using SMLMRender: _clip_rgb_channels
-
-        test_img = zeros(RGB{Float64}, 10, 10)
-        # Fill with moderate values in red channel
-        for i in 1:9, j in 1:9
-            test_img[i, j] = RGB(0.5, 0.0, 0.0)
-        end
-        # Add bright outlier in red channel
-        test_img[10, 10] = RGB(10.0, 0.0, 0.0)
-
-        clipped = _clip_rgb_channels(copy(test_img), 0.95)
-
-        # The outlier red value should be reduced by clipping
-        @test clipped[10, 10].r < test_img[10, 10].r
-        # Non-outlier red values should be unchanged (below percentile)
-        @test clipped[1, 1].r == test_img[1, 1].r
-        # Green channel (all zero) should stay zero
-        @test maximum(c.g for c in clipped) == 0.0
-
-        # Integration test: overlay with histogram (which already clips internally)
-        # just verifies the overlay path accepts clip_percentile without error
+        # Each overlay channel is its own single-color render, which clips at
+        # clip_percentile (see test_render_correctness.jl, M4); this checks the
+        # overlay path accepts both a percentile and saturate mode.
         camera = IdealCamera(64, 64, 100.0)
         emitters1 = [
             make_emitter2d(3.2, 3.2, 1000.0, 10.0, 0.02, 0.02, 50.0, 2.0; frame=1, id=1),
@@ -601,5 +581,7 @@ end
             @test_throws AssertionError save_image(f, img; pixel_size_nm=(10.0, -1.0))
         end
     end
+
+    include("test_render_correctness.jl")
 
 end

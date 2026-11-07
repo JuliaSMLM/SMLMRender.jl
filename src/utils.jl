@@ -134,7 +134,8 @@ uses data bounds with margin.
 # Arguments
 - `smld`: SMLD dataset (must have .emitters field)
 - `pixel_size`: Pixel size in nm (uses data bounds + margin)
-- `zoom`: Zoom factor - renders exact camera FOV with camera_pixels × zoom output
+- `zoom`: Zoom factor - renders exact camera FOV with camera_pixels × zoom output.
+  Needs square camera pixels (`ArgumentError` otherwise).
 - `roi`: Camera pixel ROI as `(x_range, y_range)`. Use `:` for full range.
   Example: `roi=(430:860, 1:256)` or `roi=(430:860, :)` for full y.
   Only used with `zoom` mode.
@@ -222,16 +223,22 @@ end
 """
     get_camera_pixel_size(camera)
 
-Get pixel size in nm from camera object.
+Get the camera's pixel size in nm. Zoom mode subdivides camera pixels into
+square output pixels, so a camera whose x and y pixel sizes differ is refused
+with an `ArgumentError` (render it with `pixel_size=` or an explicit `target`).
 """
 function get_camera_pixel_size(camera)
-    # For IdealCamera and SCMOSCamera, assume square pixels
-    # Pixel size = difference between first two pixel edges
-    if length(camera.pixel_edges_x) >= 2
-        return (camera.pixel_edges_x[2] - camera.pixel_edges_x[1]) * 1000  # μm to nm
-    else
+    if length(camera.pixel_edges_x) < 2 || length(camera.pixel_edges_y) < 2
         error("Cannot determine pixel size from camera")
     end
+    dx = (camera.pixel_edges_x[2] - camera.pixel_edges_x[1]) * 1000  # μm to nm
+    dy = (camera.pixel_edges_y[2] - camera.pixel_edges_y[1]) * 1000
+    if !isapprox(dx, dy; rtol=1e-4)
+        throw(ArgumentError("zoom mode needs square camera pixels, but this camera's " *
+                            "pixels are $(dx) nm in x and $(dy) nm in y; render with " *
+                            "pixel_size= or an explicit target instead"))
+    end
+    return Float64(dx)
 end
 
 """
@@ -245,7 +252,7 @@ Calculate range of field values, optionally with percentile clipping.
 - `clip_percentiles`: Tuple `(low, high)` for percentile clipping, or `nothing`
 - `frame_offsets`: Required when `field === :absolute_frame`
 
-Returns `(min_val, max_val)`
+Returns `(min_val, max_val)` as `Float64`, whatever the field's own number type.
 """
 function calculate_field_range(smld, field::Symbol, clip_percentiles; frame_offsets=nothing)
     # Precompute frame offsets if needed and not provided
@@ -260,13 +267,15 @@ function calculate_field_range(smld, field::Symbol, clip_percentiles; frame_offs
     values = [get_field_value(e, field; frame_offsets=frame_offsets) for e in smld.emitters]
 
     if clip_percentiles === nothing
-        return extrema(values)
+        min_val, max_val = extrema(values)
     else
         low, high = clip_percentiles
         min_val = quantile(values, low)
         max_val = quantile(values, high)
-        return (min_val, max_val)
     end
+    # Integer fields (frame, id) and Float32 fits reduce in their own type;
+    # every caller works in Float64.
+    return (Float64(min_val), Float64(max_val))
 end
 
 """

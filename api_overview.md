@@ -41,11 +41,11 @@ Physical coordinates are in micrometers (μm). Pixel sizes are in nanometers (nm
 
 **HistogramRender:** Fast binning - counts localizations per pixel. No sub-pixel accuracy. Best for quick previews or very dense data.
 
-**GaussianRender:** Renders each localization as a 2D Gaussian blob. Provides smooth, publication-quality images with sub-pixel accuracy. Can use localization precision (σ_x, σ_y fields) or fixed sigma.
+**GaussianRender:** Renders each localization as a 2D Gaussian blob. Provides smooth, publication-quality images with sub-pixel accuracy. Can use localization precision (σ_x, σ_y, σ_xy fields) or fixed sigma. Each pixel holds the Gaussian integrated over that pixel, so a localization's brightness does not depend on where it falls inside a pixel, even for sigmas well below a pixel.
 
 **CircleRender:** Renders localization as circle outline. Useful for visualizing localization precision when σ represents uncertainty radius. Circle radius can be multiple of σ.
 
-**EllipseRender:** Renders localization as ellipse outline using separate σ_x, σ_y for axis radii. Uses σ_xy covariance for rotation when available. Useful for visualizing anisotropic localization precision.
+**EllipseRender:** Renders localization as the outline of its covariance ellipse: semi-axes `radius_factor·sqrt(λ)` for the eigenvalues λ of `[σ_x² σ_xy; σ_xy σ_y²]`, oriented along the eigenvectors. Useful for visualizing anisotropic localization precision.
 
 ### Color Mapping Strategies
 
@@ -285,7 +285,8 @@ Multi-channel rendering via dispatch on `Vector`.
 - `smlds::Vector` - Vector of SMLD datasets
 - `colors::Vector` - Vector of colors (RGB, Symbol like `:red`, or String like `"green"`)
 - `normalize_each::Bool` - Normalize each channel independently (default: `true`)
-- `clip_percentile::Union{Real, Nothing}` - Per-channel intensity clipping (default: `nothing` = saturate mode). Use `nothing` for classic two-color overlays where each localization gets full brightness and dense regions saturate to white.
+- `clip_percentile::Union{Real, Nothing}` - Per-channel intensity clipping (default: `0.99`): each channel is its own single-color render, clipped at this percentile of its non-zero pixels and normalized. Use `nothing` (saturate mode) for classic two-color overlays where dense regions saturate to white.
+- In `pixel_size` mode the shared frame covers the combined extent of all channels; in `zoom` mode it is the camera field of view.
 - All other kwargs same as single-channel render
 
 **Returns:** `(image, info)` tuple with overlaid channels image and combined RenderInfo

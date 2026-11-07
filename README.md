@@ -23,9 +23,9 @@ SMLM experiments produce lists of localization coordinates (x, y, and optionally
 Four strategies control *how* each localization appears in the image:
 
 - **Histogram** bins localizations into pixels. Fast, no sub-pixel accuracy. Best for quick previews and dense datasets.
-- **Gaussian** renders each localization as a smooth 2D Gaussian blob. When `use_localization_precision=true`, the blob width comes from the emitter's σ_x and σ_y fields (from `EmitterFit` types), giving narrower blobs for high-photon localizations. This is the default strategy.
+- **Gaussian** renders each localization as a smooth 2D Gaussian blob. When `use_localization_precision=true`, the blob width comes from the emitter's σ_x and σ_y fields (from `EmitterFit` types), giving narrower blobs for high-photon localizations. Each pixel holds the Gaussian integrated over that pixel, so brightness does not depend on sub-pixel position. This is the default strategy.
 - **Circle** draws a circle outline at each localization, with radius derived from the localization precision (σ_x). Useful for visualizing uncertainty per localization.
-- **Ellipse** draws an ellipse outline using σ_x, σ_y, and σ_xy (covariance) from `EmitterFit` types, showing anisotropic localization precision.
+- **Ellipse** draws the outline of each localization's covariance ellipse from σ_x, σ_y, and σ_xy (`EmitterFit` types), showing anisotropic localization precision.
 
 ### Color Mapping
 
@@ -40,7 +40,7 @@ Additionally: **categorical** coloring assigns distinct palette colors to intege
 
 The SMLD dataset carries a camera model that defines the physical field of view. Resolution is specified one of two ways:
 
-- **Zoom mode** (`zoom=N`): Subdivides each camera pixel into N output pixels. A 64x64 camera at `zoom=20` produces exactly 1280x1280 output pixels covering the full camera FOV. This gives predictable, reproducible image sizes. Supports **ROI** to render a subregion: `roi=(x_range, y_range)` specifies camera pixel ranges (e.g., `roi=(20:44, :)` for columns 20-44, full rows).
+- **Zoom mode** (`zoom=N`): Subdivides each camera pixel into N output pixels. A 64x64 camera at `zoom=20` produces exactly 1280x1280 output pixels covering the full camera FOV. This gives predictable, reproducible image sizes. Zoom mode needs square camera pixels (a camera with different x and y pixel sizes is refused; use pixel-size mode for it). Supports **ROI** to render a subregion: `roi=(x_range, y_range)` specifies camera pixel ranges (e.g., `roi=(20:44, :)` for columns 20-44, full rows).
 - **Pixel size mode** (`pixel_size=N`): Sets the output pixel size in nanometers and computes image dimensions from the data bounding box plus margin. Output size varies with data extent.
 
 ## Quick Start

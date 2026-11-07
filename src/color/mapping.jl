@@ -409,23 +409,31 @@ approach as the intensity rendering path.
 3. Average color: RGB = (r_num/S, g_num/S, b_num/S) where S = original intensity
 4. Final: RGB * normalized_brightness
 
+With `clip_percentile = nothing` (saturate mode) steps 1-2 are skipped and the
+brightness is the raw accumulated intensity, which can exceed 1, as in the
+histogram field and categorical paths.
+
 # Arguments
 - `intensity`: Total accumulated intensity (overlap count)
 - `r_num`, `g_num`, `b_num`: Color numerators weighted by intensity
-- `clip_percentile`: Percentile of non-zero pixels for clipping (default 0.99)
+- `clip_percentile`: Percentile of non-zero pixels for clipping (default 0.99), or `nothing`
 """
 function apply_intensity_weighted_color(intensity::Matrix{Float64},
                                        r_num::Matrix{Float64},
                                        g_num::Matrix{Float64},
                                        b_num::Matrix{Float64};
-                                       clip_percentile::Float64 = 0.99)
+                                       clip_percentile::Union{Float64, Nothing} = 0.99)
     height, width = size(intensity)
     result = zeros(RGB{Float64}, height, width)
 
     # Clip and normalize intensity (same as intensity rendering path)
-    intensity_norm = copy(intensity)
-    clip_at_percentile(intensity_norm, clip_percentile)
-    intensity_norm = normalize_to_01(intensity_norm)
+    if clip_percentile === nothing
+        intensity_norm = intensity
+    else
+        intensity_norm = copy(intensity)
+        clip_at_percentile(intensity_norm, clip_percentile)
+        intensity_norm = normalize_to_01(intensity_norm)
+    end
 
     # Small epsilon to avoid division by zero
     ε = 1e-6

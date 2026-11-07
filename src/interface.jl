@@ -242,13 +242,22 @@ function render_overlay(smlds::Vector, colors::Vector;
     # Convert color symbols to RGB if needed
     rgb_colors = [c isa Symbol ? parse(Colorant, string(c)) : c for c in colors]
 
-    # Create common target if not provided
+    # Create common target if not provided. Zoom mode covers the shared camera's
+    # FOV; pixel_size mode covers the combined extent of every channel, so no
+    # channel's localizations fall outside the frame.
     if target === nothing
         @assert pixel_size !== nothing || zoom !== nothing "Must specify pixel_size, zoom, or target"
-        target = create_target_from_smld(smlds[1]; pixel_size=pixel_size, zoom=zoom)
+        if zoom !== nothing
+            target = create_target_from_smld(smlds[1]; zoom=zoom)
+        else
+            all_emitters = reduce(vcat, (s.emitters for s in smlds))
+            target = create_target_from_smld((emitters = all_emitters,); pixel_size=pixel_size)
+        end
     end
 
-    # Render each dataset with manual color
+    # Render each dataset with manual color. Each channel is exactly its own
+    # single-color render: clipped at clip_percentile and normalized, or raw in
+    # saturate mode (clip_percentile = nothing).
     images = []
     total_emitters = 0
     t_start = time()
@@ -258,16 +267,6 @@ function render_overlay(smlds::Vector, colors::Vector;
         (img, info) = _render_dispatch(smld, target, config)
         push!(images, img)
         total_emitters += info.n_emitters_rendered
-    end
-
-    # Apply per-channel percentile clipping before normalization
-    # This matches single-channel IntensityColorMapping behavior where clip_at_percentile
-    # is applied before normalize_to_01. Without this, overlay channels get max-normalized
-    # which loses contrast compared to single-channel renders.
-    if clip_percentile !== nothing && !(strategy isa CircleRender || strategy isa EllipseRender)
-        for i in eachindex(images)
-            images[i] = _clip_rgb_channels(images[i], clip_percentile)
-        end
     end
 
     # Normalize each independently if requested
@@ -517,7 +516,7 @@ function _render_dispatch(smld, target::Image2DTarget, config::RenderConfig)
                               clip_percentile=config.clip_percentile)
     elseif strategy isa GaussianRender
         img = render_gaussian(smld, target, strategy, color_mapping;
-                             clip_percentile=something(config.clip_percentile, 0.99))
+                             clip_percentile=config.clip_percentile)
     elseif strategy isa CircleRender
         img = render_circle(smld, target, strategy, color_mapping)
     elseif strategy isa EllipseRender
@@ -542,36 +541,6 @@ function _render_dispatch(smld, target::Image2DTarget, config::RenderConfig)
     )
 
     return (img, info)
-end
-
-"""
-    _clip_rgb_channels(img::Matrix{RGB{Float64}}, percentile::Real)
-
-Apply percentile clipping to each non-zero RGB channel independently.
-Extracts R/G/B as separate matrices, clips each via `clip_at_percentile`,
-and reassembles. Channels that are all zero are left unchanged.
-"""
-function _clip_rgb_channels(img::Matrix{RGB{Float64}}, percentile::Real)
-    # Extract channels into pre-allocated matrices (one at a time would save
-    # peak memory, but we need all three to reassemble)
-    r = Matrix{Float64}(undef, size(img))
-    g = Matrix{Float64}(undef, size(img))
-    b = Matrix{Float64}(undef, size(img))
-    @inbounds for i in eachindex(img)
-        r[i] = img[i].r
-        g[i] = img[i].g
-        b[i] = img[i].b
-    end
-
-    any(x -> x > 0, r) && clip_at_percentile(r, percentile)
-    any(x -> x > 0, g) && clip_at_percentile(g, percentile)
-    any(x -> x > 0, b) && clip_at_percentile(b, percentile)
-
-    result = Matrix{RGB{Float64}}(undef, size(img))
-    @inbounds for i in eachindex(r)
-        result[i] = RGB{Float64}(r[i], g[i], b[i])
-    end
-    return result
 end
 
 """
