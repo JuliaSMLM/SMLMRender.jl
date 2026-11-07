@@ -8,8 +8,9 @@ using Colors
 
 Render SMLD data as ellipse outlines.
 
-Each localization is rendered as an ellipse outline using σ_x, σ_y for radii
-and σ_xy (covariance) for rotation when available.
+Each localization is rendered as the outline of its covariance ellipse: semi-axes
+`radius_factor·sqrt(λ)` for the eigenvalues λ of `[σ_x² σ_xy; σ_xy σ_y²]`,
+oriented along the eigenvectors (see [`get_ellipse_params`](@ref)).
 
 # Arguments
 - `smld`: SMLD dataset with .emitters field
@@ -60,8 +61,10 @@ function render_ellipse_field(smld, target::Image2DTarget,
         # Get ellipse parameters (radii and rotation)
         radius_x_nm, radius_y_nm, θ = get_ellipse_params(emitter, strategy)
 
-        if radius_x_nm < 0.1 || radius_x_nm > 10000.0 ||
-           radius_y_nm < 0.1 || radius_y_nm > 10000.0
+        # Skip only invisible (major axis under 0.1 nm) or absurd ellipses; a
+        # near-degenerate covariance draws as a line along its major axis.
+        major_nm = max(radius_x_nm, radius_y_nm)
+        if major_nm < 0.1 || major_nm > 10000.0
             continue
         end
 
@@ -90,8 +93,10 @@ function render_ellipse_manual(smld, target::Image2DTarget,
     for emitter in smld.emitters
         radius_x_nm, radius_y_nm, θ = get_ellipse_params(emitter, strategy)
 
-        if radius_x_nm < 0.1 || radius_x_nm > 10000.0 ||
-           radius_y_nm < 0.1 || radius_y_nm > 10000.0
+        # Skip only invisible (major axis under 0.1 nm) or absurd ellipses; a
+        # near-degenerate covariance draws as a line along its major axis.
+        major_nm = max(radius_x_nm, radius_y_nm)
+        if major_nm < 0.1 || major_nm > 10000.0
             continue
         end
 
@@ -118,8 +123,10 @@ function render_ellipse_categorical(smld, target::Image2DTarget,
     for emitter in smld.emitters
         radius_x_nm, radius_y_nm, θ = get_ellipse_params(emitter, strategy)
 
-        if radius_x_nm < 0.1 || radius_x_nm > 10000.0 ||
-           radius_y_nm < 0.1 || radius_y_nm > 10000.0
+        # Skip only invisible (major axis under 0.1 nm) or absurd ellipses; a
+        # near-degenerate covariance draws as a line along its major axis.
+        major_nm = max(radius_x_nm, radius_y_nm)
+        if major_nm < 0.1 || major_nm > 10000.0
             continue
         end
 

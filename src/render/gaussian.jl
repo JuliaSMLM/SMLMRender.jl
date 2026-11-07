@@ -1,7 +1,7 @@
 # Gaussian blob rendering for SMLMRender.jl
 
 using Colors
-using SpecialFunctions: erfc, erfcinv
+using StatsFuns: normcdf, normpdf, bvncdf
 
 """
     render_gaussian(smld, target::Image2DTarget, strategy::GaussianRender,
@@ -130,9 +130,11 @@ end
 Gaussian render with single manual color.
 
 Process: accumulate Gaussian intensity → clip at `clip_percentile` of non-zero
-pixels → normalize to [0, 1] → multiply by the color, as the histogram path does.
-`clip_percentile=nothing` is saturate mode: the raw accumulated intensity times
-the color, which can exceed 1.
+pixels → divide by the clip value → multiply by the color. Zero density stays
+black (the scale is not min-max, so a frame with no empty pixel keeps its
+dimmest structure visible). `clip_percentile=nothing` is saturate mode: the raw
+accumulated intensity (each localization's unit mass spread over its pixels)
+times the color, for callers that scale it themselves.
 """
 function render_gaussian_manual(smld, target::Image2DTarget,
                                 strategy::GaussianRender,
@@ -153,8 +155,8 @@ function render_gaussian_manual(smld, target::Image2DTarget,
     end
 
     if clip_percentile !== nothing
-        clip_at_percentile(intensity, clip_percentile)
-        intensity = normalize_to_01(intensity)
+        clip_val = clip_at_percentile(intensity, clip_percentile)
+        clip_val > 0 && (intensity ./= clip_val)
     end
 
     result = Matrix{RGB{Float64}}(undef, target.height, target.width)
@@ -296,55 +298,42 @@ end
 # Pixel-integrated Gaussian kernel (shared by every Gaussian color mode)
 # ============================================================================
 
-# Standard normal CDF, density and quantile.
-@inline _normcdf(t::Float64) = 0.5 * erfc(-t * 0.7071067811865476)
-@inline _normpdf(t::Float64) = 0.3989422804014327 * exp(-0.5 * t^2)
-@inline _norminv(u::Float64) = -1.4142135623730951 * erfcinv(2.0 * u)
-
-# 8-point Gauss–Legendre rule on [-1, 1].
-const _GL_NODES = (-0.9602898564975363, -0.7966664774136267, -0.5255324099163290,
-                   -0.1834346424956498,  0.1834346424956498,  0.5255324099163290,
-                    0.7966664774136267,  0.9602898564975363)
-const _GL_WEIGHTS = (0.1012285362903763, 0.2223810344533745, 0.3137066458778873,
-                     0.3626837833783620, 0.3626837833783620, 0.3137066458778873,
-                     0.2223810344533745, 0.1012285362903763)
-
 # Below this |correlation| a pixel's mass uses the bivariate normal's expansion to
 # first order in ρ: P = ΔΦx·ΔΦy + ρ·Δφx·Δφy (Δ = difference across the pixel's
 # standardized edges; ∂Φ₂/∂ρ = φ₂). The next term, (ρ²/2)·Δ(hφ(h))·Δ(kφ(k)), is
 # at most 0.12ρ², so the error stays under 1.2e-5 of the localization's mass per
 # pixel. Fitted σ_xy is small but almost never exactly zero (SeqSR lab data:
-# median |ρ| 1e-3, 99th percentile 0.01), so this keeps fitted data on the fast path.
+# median |ρ| 1e-3, 99th percentile 0.01), so this keeps fitted data on the fast
+# path; stronger correlations use the exact bivariate normal CDF.
 const _RHO_FIRST_ORDER = 0.01
 
 """
     foreach_gaussian_pixel(f, emitter, target, sigma_x, sigma_y, n_sigmas,
                            normalization; sigma_xy=0.0)
 
-Call `f(i, j, w)` for each pixel `(i, j)` in a localization's window, where `w`
-is the localization's 2D Gaussian (covariance `[σx² σxy; σxy σy²]`, nm and nm²)
+Call `f(i, j, w)` for each in-image pixel `(i, j)` of a localization's window,
+where `w` is its 2D Gaussian (covariance `[σx² σxy; σxy σy²]`, nm and nm²)
 integrated over that pixel. The window spans `n_sigmas` of the larger sigma
-beyond the pixels next to the center, clipped to the image.
+beyond the pixels next to the center.
 
-`normalization = :integral` gives each localization unit mass (exactly, apart
-from the window truncation), wherever it falls inside a pixel and however small
-its sigma. `:maximum` scales that by `2π·sqrt(det Σ)` (pixel units), so each
-pixel is the pixel average of a peak-1 Gaussian: about 1 at the peak for sigmas
-of a pixel or more, and less for sigmas below a pixel.
+- `normalization = :integral`: each localization has unit mass (exactly, apart
+  from the mass beyond the window), wherever it falls inside a pixel and however
+  small its sigma.
+- `normalization = :maximum`: the same pixel integrals scaled so the
+  localization's brightest pixel is 1, wherever it falls and whatever its sigma.
+  The peak is taken over the whole window, so a localization just outside the
+  image still shows only its dim tail.
 
-Uncorrelated x and y use the exact product of error-function differences; a
+Uncorrelated x and y use the exact product of normal-CDF differences. A
 correlation `|ρ| < 0.01` adds its first-order term (error below 1.2e-5 of the
-localization's mass per pixel). Stronger correlations integrate the conditional
-x-distribution over each row with an 8-point Gauss–Legendre rule in
-`u = Φ((y - y0)/σy)`, which keeps each row's mass exact. A covariance that is not
-positive definite falls back to the axis-aligned Gaussian.
+localization's mass per pixel). Stronger correlations use the bivariate normal
+CDF at the pixel corners (Genz's algorithm, `StatsFuns.bvncdf`). A covariance
+that is not positive definite falls back to the axis-aligned Gaussian.
 """
 function foreach_gaussian_pixel(f::F, emitter, target::Image2DTarget,
                                 sigma_x::Float64, sigma_y::Float64,
                                 n_sigmas::Float64, normalization::Symbol;
                                 sigma_xy::Float64=0.0) where {F}
-    # Bound once: x0 is captured by the closures below, and a reassigned captured
-    # variable is boxed, which makes the whole kernel type-unstable.
     xp, yp = physical_to_pixel(emitter.x, emitter.y, target)
     x0 = Float64(xp)
     y0 = Float64(yp)
@@ -354,81 +343,78 @@ function foreach_gaussian_pixel(f::F, emitter, target::Image2DTarget,
     sy = sigma_y / target.pixel_size
     sxy = sigma_xy / target.pixel_size^2
 
+    # Whole window (not clipped to the image, so :maximum sees the true peak)
     half_width = ceil(Int, n_sigmas * max(sx, sy))
-    j_min = max(1, floor(Int, x0) - half_width)
-    j_max = min(target.width, ceil(Int, x0) + half_width)
-    i_min = max(1, floor(Int, y0) - half_width)
-    i_max = min(target.height, ceil(Int, y0) + half_width)
-    (j_min > j_max || i_min > i_max) && return nothing
+    j_lo = floor(Int, x0) - half_width
+    j_hi = ceil(Int, x0) + half_width
+    i_lo = floor(Int, y0) - half_width
+    i_hi = ceil(Int, y0) + half_width
+    (j_hi < 1 || j_lo > target.width || i_hi < 1 || i_lo > target.height) && return nothing
+    n_cols = j_hi - j_lo + 1
+    n_rows = i_hi - i_lo + 1
 
     det = sx^2 * sy^2 - sxy^2
-    if det <= 0
-        sxy = 0.0
-        det = sx^2 * sy^2
-    end
-    scale = normalization === :integral ? 1.0 : 2π * sqrt(det)
-    ρ = sxy / (sx * sy)
+    ρ = det > 0 ? sxy / (sx * sy) : 0.0   # not positive definite: axis-aligned
+    peak = normalization === :maximum
 
     if abs(ρ) < _RHO_FIRST_ORDER
-        inv_sx = 1.0 / sx
-        inv_sy = 1.0 / sy
-        # Row factors once per blob: ΔΦ and Δφ across each row's edges.
-        n_rows = i_max - i_min + 1
-        wy = Vector{Float64}(undef, n_rows)
-        dy = Vector{Float64}(undef, n_rows)
-        k = (i_min - 0.5 - y0) * inv_sy
-        c_lo = _normcdf(k)
-        p_lo = _normpdf(k)
-        @inbounds for r in 1:n_rows
-            k = (i_min + r - 0.5 - y0) * inv_sy
-            c_hi = _normcdf(k)
-            p_hi = _normpdf(k)
-            wy[r] = c_hi - c_lo
-            dy[r] = p_hi - p_lo
-            c_lo = c_hi
-            p_lo = p_hi
-        end
-        hl = (j_min - 0.5 - x0) * inv_sx
-        c_l = _normcdf(hl)
-        p_l = _normpdf(hl)
-        @inbounds for j in j_min:j_max
-            hr = (j + 0.5 - x0) * inv_sx
-            c_r = _normcdf(hr)
-            p_r = _normpdf(hr)
-            wx = scale * (c_r - c_l)
-            dx = scale * ρ * (p_r - p_l)
-            for r in 1:n_rows
-                # max(…, 0): the first-order term can only push a far-tail pixel of
-                # a strongly anisotropic blob below zero, by a negligible amount
-                f(i_min + r - 1, j, max(wx * wy[r] + dx * dy[r], 0.0))
-            end
-            c_l = c_r
-            p_l = p_r
-        end
+        # ΔΦ and Δφ across each column's and each row's standardized edges
+        wx, dx = _edge_terms(j_lo, n_cols, x0, sx)
+        wy, dy = _edge_terms(i_lo, n_rows, y0, sy)
+        # max(…, 0): the first-order term can only push a far-tail pixel of a
+        # strongly anisotropic blob below zero, by a negligible amount
+        pixel_mass = (r, c) -> @inbounds max(wx[c] * wy[r] + ρ * dx[c] * dy[r], 0.0)
+        _emit_blob(f, pixel_mass, i_lo, j_lo, n_rows, n_cols, target, peak)
     else
-        # x | y is normal with mean x0 + β (y - y0) and variance det / σy².
-        β_sy = sxy / sy        # β · σy, with β = σxy / σy²
-        inv_s = sy / sqrt(det)
-        inv_sy = 1.0 / sy
-        u_lo = _normcdf((i_min - 0.5 - y0) * inv_sy)
-        @inbounds for i in i_min:i_max
-            u_hi = _normcdf((i + 0.5 - y0) * inv_sy)
-            half = 0.5 * (u_hi - u_lo)
-            if half > 0
-                mid = 0.5 * (u_hi + u_lo)
-                m = ntuple(k -> x0 + β_sy * _norminv(mid + half * _GL_NODES[k]), Val(8))
-                c_prev = ntuple(k -> _normcdf((j_min - 0.5 - m[k]) * inv_s), Val(8))
-                for j in j_min:j_max
-                    c_next = ntuple(k -> _normcdf((j + 0.5 - m[k]) * inv_s), Val(8))
-                    acc = 0.0
-                    for k in 1:8
-                        acc += _GL_WEIGHTS[k] * (c_next[k] - c_prev[k])
-                    end
-                    f(i, j, scale * half * acc)
-                    c_prev = c_next
-                end
-            end
-            u_lo = u_hi
+        # Bivariate normal CDF at every pixel corner of the window
+        G = Matrix{Float64}(undef, n_rows + 1, n_cols + 1)
+        @inbounds for c in 1:(n_cols + 1), r in 1:(n_rows + 1)
+            G[r, c] = bvncdf((j_lo + c - 1.5 - x0) / sx, (i_lo + r - 1.5 - y0) / sy, ρ)
+        end
+        pixel_mass = (r, c) -> @inbounds max(G[r + 1, c + 1] - G[r, c + 1] - G[r + 1, c] + G[r, c], 0.0)
+        _emit_blob(f, pixel_mass, i_lo, j_lo, n_rows, n_cols, target, peak)
+    end
+    return nothing
+end
+
+# Differences of the standard normal CDF (ΔΦ) and density (Δφ) across the edges
+# of n pixels starting at index `lo`, for a Gaussian at pixel coordinate `μ` with
+# sigma `s` (pixels). Pixel k spans [k - 0.5, k + 0.5].
+function _edge_terms(lo::Int, n::Int, μ::Float64, s::Float64)
+    w = Vector{Float64}(undef, n)
+    d = Vector{Float64}(undef, n)
+    t = (lo - 0.5 - μ) / s
+    c_prev = normcdf(t)
+    p_prev = normpdf(t)
+    @inbounds for k in 1:n
+        t = (lo + k - 0.5 - μ) / s
+        c = normcdf(t)
+        p = normpdf(t)
+        w[k] = c - c_prev
+        d[k] = p - p_prev
+        c_prev = c
+        p_prev = p
+    end
+    return w, d
+end
+
+# Call f(i, j, w) for the in-image pixels of a window, scaling by the window's
+# brightest pixel when `peak` (normalization = :maximum).
+@inline function _emit_blob(f::F, pixel_mass::P, i_lo::Int, j_lo::Int, n_rows::Int, n_cols::Int,
+                            target::Image2DTarget, peak::Bool) where {F, P}
+    scale = 1.0
+    if peak
+        m = 0.0
+        for c in 1:n_cols, r in 1:n_rows
+            m = max(m, pixel_mass(r, c))
+        end
+        m > 0 || return nothing
+        scale = 1.0 / m
+    end
+    for c in max(1, 2 - j_lo):min(n_cols, target.width - j_lo + 1)
+        j = j_lo + c - 1
+        for r in max(1, 2 - i_lo):min(n_rows, target.height - i_lo + 1)
+            f(i_lo + r - 1, j, scale * pixel_mass(r, c))
         end
     end
     return nothing

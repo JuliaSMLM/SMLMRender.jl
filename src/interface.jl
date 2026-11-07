@@ -206,8 +206,12 @@ end
 
 Render multiple datasets with different colors and overlay them.
 
-Each dataset is normalized independently, then combined additively.
-Oversaturated regions clip to white.
+Each dataset is rendered as its own single-color image (clipped at
+`clip_percentile` and scaled to full brightness, or raw with
+`clip_percentile=nothing`), optionally divided by its own maximum
+(`normalize_each`), then combined additively. Oversaturated regions clip to
+white. In `pixel_size` mode the frame covers every channel's localizations; in
+`zoom` mode it is the first channel's camera field of view.
 
 # Arguments
 - `smlds`: Vector of SMLD datasets

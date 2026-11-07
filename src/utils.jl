@@ -151,6 +151,7 @@ function create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, roi=not
         @assert hasfield(typeof(smld), :camera) "zoom requires smld.camera"
 
         camera = smld.camera
+        check_square_camera_pixels(camera)
         camera_pixel_size = get_camera_pixel_size(camera)  # nm
         pixel_size = camera_pixel_size / zoom
 
@@ -223,22 +224,36 @@ end
 """
     get_camera_pixel_size(camera)
 
-Get the camera's pixel size in nm. Zoom mode subdivides camera pixels into
-square output pixels, so a camera whose x and y pixel sizes differ is refused
-with an `ArgumentError` (render it with `pixel_size=` or an explicit `target`).
+Get pixel size in nm from camera object (the x spacing of the first pixel).
 """
 function get_camera_pixel_size(camera)
-    if length(camera.pixel_edges_x) < 2 || length(camera.pixel_edges_y) < 2
+    # For IdealCamera and SCMOSCamera, assume square pixels
+    # Pixel size = difference between first two pixel edges
+    if length(camera.pixel_edges_x) >= 2
+        return (camera.pixel_edges_x[2] - camera.pixel_edges_x[1]) * 1000  # μm to nm
+    else
         error("Cannot determine pixel size from camera")
     end
-    dx = (camera.pixel_edges_x[2] - camera.pixel_edges_x[1]) * 1000  # μm to nm
-    dy = (camera.pixel_edges_y[2] - camera.pixel_edges_y[1]) * 1000
-    if !isapprox(dx, dy; rtol=1e-4)
-        throw(ArgumentError("zoom mode needs square camera pixels, but this camera's " *
-                            "pixels are $(dx) nm in x and $(dy) nm in y; render with " *
-                            "pixel_size= or an explicit target instead"))
-    end
-    return Float64(dx)
+end
+
+"""
+    check_square_camera_pixels(camera)
+
+Throw an `ArgumentError` unless the camera's x and y pixel sizes agree. Zoom mode
+subdivides camera pixels into square output pixels, so a rectangular-pixel camera
+would have y scaled by the x size and part of its field cut off. The sizes are
+compared as mean spacings over the whole field, so Float32 rounding of edges far
+from the origin cannot trip the check.
+"""
+function check_square_camera_pixels(camera)
+    ex, ey = camera.pixel_edges_x, camera.pixel_edges_y
+    (length(ex) >= 2 && length(ey) >= 2) || error("Cannot determine pixel size from camera")
+    dx = (Float64(ex[end]) - Float64(ex[1])) / (length(ex) - 1) * 1000  # nm
+    dy = (Float64(ey[end]) - Float64(ey[1])) / (length(ey) - 1) * 1000
+    isapprox(dx, dy; rtol=1e-4) && return nothing
+    throw(ArgumentError("zoom mode needs square camera pixels, but this camera's " *
+                        "pixels are $(dx) nm in x and $(dy) nm in y; render with " *
+                        "pixel_size= or an explicit target instead"))
 end
 
 """

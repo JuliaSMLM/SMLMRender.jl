@@ -3,6 +3,7 @@
 # testset fails on v0.4.7 and passes after the fix.
 
 using Test, SMLMRender, SMLMData, Colors
+using StatsFuns: normcdf
 using SMLMRender: get_ellipse_params
 
 # Inverse of a 2×2 matrix (keeps LinearAlgebra out of the test deps).
@@ -68,7 +69,8 @@ end
         # meaning of `nothing`): one unit of mass per localization.
         (raw, _) = render(smld; color=:red, zoom=5, clip_percentile=nothing)
         @test isapprox(sum(red, raw), 300; rtol=1e-3)
-        # Gaussian field coloring honors saturate mode too.
+        # Gaussian field coloring honors saturate mode too (raw intensity, as
+        # color= already gave in v0.4.7; it used to silently clip at 0.99).
         (f99, _) = render(smld; color_by=:photons, zoom=5)
         (fsat, _) = render(smld; color_by=:photons, zoom=5, clip_percentile=nothing)
         @test fsat != f99
@@ -81,6 +83,22 @@ end
         (g2, _) = render(smld2; color=:green, zoom=10)
         @test map(red, ov) ≈ map(red, r1)
         @test map(green, ov) ≈ map(green, g2) ./ maximum(green, g2)
+        # normalize_each = false with a clip percentile: each channel is exactly its
+        # single-color render (already clipped and scaled), not rescaled.
+        (ov_raw, _) = render([smld, smld2]; colors=[:red, :green], zoom=10, normalize_each=false)
+        @test map(red, ov_raw) ≈ map(red, r1)
+        @test map(green, ov_raw) ≈ map(green, g2)
+        # A frame with no empty pixel: zero density stays black (the scale is
+        # density / clip value, not min-max), so the dimmest structure is not
+        # subtracted away, and an overlay channel equals its single-color render.
+        grid = [emitter_at(1.37 + 0.013a + 0.002b, 1.37 + 0.011b; σ=0.03)
+                for a in 0:20, b in 0:23]
+        dense = BasicSMLD(vec(grid), camera, 1, 1)
+        t = Image2DTarget(50, 50, 4.0, (1.4, 1.6), (1.4, 1.6))
+        (d1, _) = render(dense, t, RenderConfig(color=:red))
+        @test minimum(red, d1) > 0.05
+        (dov, _) = render([dense]; colors=[:red], target=t)
+        @test map(red, dov) ≈ map(red, d1)
     end
 
     @testset "M1: overlay in pixel_size mode frames every channel" begin
@@ -114,9 +132,11 @@ end
         end
         # v0.4.7 sampled pixel centers: 2.55 at the center and 0.19 at a corner for σ = 0.25 px
         @test isapprox(masses[(0.2, 0.0)], masses[(0.2, 1.0)]; atol=1e-6)
+        # The window covers the wide axis at the default n_sigmas = 3 (a 6:1 blob).
+        @test sum(red, blob_sum(0.205, 0.205, 30.0; σy_nm=5.0, n_sigmas=3.0)) > 0.995
         # Correlated: mass exact, and pixel values match a fine-grid integral of
         # the same Gaussian, on both kernel paths (first order in ρ below 0.01,
-        # Gauss–Legendre above) and for unequal sigmas.
+        # bivariate normal CDF above) and for unequal sigmas.
         for (σx_nm, σy_nm, ρ) in ((5.0, 5.0, 0.8), (4.0, 6.0, -0.5), (5.0, 3.0, 0.009), (3.0, 5.0, -0.004))
             x, y = 0.2032, 0.1968
             sxy = ρ * σx_nm * σy_nm
@@ -135,9 +155,39 @@ end
                 @test isapprox(red(img[i, j]), acc * norm * (10.0 / n)^2; atol=2e-5)
             end
         end
-        # :maximum gives about 1 at the peak for a sigma of several pixels.
-        img_max = blob_sum(0.205, 0.205, 30.0; normalization=:maximum)
-        @test isapprox(maximum(red, img_max), 1.0; atol=0.02)
+        # Thin, tilted blobs in both orientations and a near-singular one, against
+        # an independent reference: the exact conditional x-probability integrated
+        # over y with 4000 midpoint samples per pixel row.
+        function conditional_ref(i, j, x, y, σx, σy, ρ)
+            s = σx * sqrt(1 - ρ^2)
+            β = ρ * σx / σy
+            n = 4000
+            xl, xr = (j - 1) * 10.0 - 1000x, j * 10.0 - 1000x
+            acc = 0.0
+            for a in 1:n
+                yy = (i - 1) * 10.0 + (a - 0.5) * 10.0 / n - 1000y
+                acc += exp(-0.5 * (yy / σy)^2) / (sqrt(2π) * σy) *
+                       (normcdf((xr - β * yy) / s) - normcdf((xl - β * yy) / s))
+            end
+            return acc * 10.0 / n
+        end
+        for (σx_nm, σy_nm, ρ) in ((20.0, 2.0, 0.9), (2.0, 20.0, 0.9), (2.5, 2.5, 0.99))
+            x, y = 0.2030, 0.1980
+            img = blob_sum(x, y, σx_nm, ρ * σx_nm * σy_nm; σy_nm=σy_nm)
+            @test isapprox(sum(red, img), 1.0; atol=1e-5)
+            worst = maximum(abs(red(img[i, j]) - conditional_ref(i, j, x, y, σx_nm, σy_nm, ρ))
+                            for i in 15:27, j in 15:27)
+            @test worst < 1e-5
+        end
+        # :maximum: each localization's brightest pixel is 1 wherever it falls and
+        # whatever its sigma (v0.4.7: 1 at a pixel center, 0.018 at a corner for 0.25 px).
+        for σ_nm in (2.5, 5.0, 30.0), (dx, dy) in ((0.0, 0.0), (0.5, 0.5), (0.3, -0.2))
+            img = blob_sum(0.205 + 0.01dx, 0.205 + 0.01dy, σ_nm; normalization=:maximum)
+            @test maximum(red, img) ≈ 1.0
+        end
+        # ...and the peak is the whole window's: a localization 3 px outside the
+        # frame shows only its dim tail.
+        @test 0 < maximum(red, blob_sum(-0.025, 0.205, 10.0; normalization=:maximum)) < 0.05
     end
 
     @testset "M3: ellipse outline is the covariance ellipse" begin
@@ -170,6 +220,11 @@ end
              for i in 1:161, j in 1:161 if red(img[i, j]) > 0.5]
         @test !isempty(r)
         @test maximum(abs.(r .- 1)) < 0.2
+        # A near-singular covariance (ρ = 0.99999) draws as a line, not nothing.
+        e_line = corr(0.020, 0.020, 0.99999)
+        (img_line, _) = render(BasicSMLD([e_line], IdealCamera(20, 20, 0.1), 1, 1), target,
+                               RenderConfig(strategy=EllipseRender(), color=:white))
+        @test count(c -> red(c) > 0, img_line) > 20
     end
 
     @testset "M6: zoom mode refuses rectangular camera pixels" begin
@@ -184,5 +239,11 @@ end
         square = BasicSMLD([emitter_at(0.25, 0.75)], IdealCamera(16, 8, 0.1), 1, 1)
         (img_sq, _) = render(square; zoom=10)
         @test size(img_sq) == (80, 160)
+        # A square Float32 camera far from the origin: rounding of its edges must
+        # not trip the check.
+        far = IdealCamera{Float32}(Float32.(1000 .+ 0.1 .* (0:16)), Float32.(1000 .+ 0.1 .* (0:8)))
+        e_far = Emitter2DFit{Float32}(1000.25f0, 1000.35f0, 1000f0, 10f0, 0.01f0, 0.01f0, 50f0, 2f0)
+        (img_far, _) = render(BasicSMLD([e_far], far, 1, 1); zoom=10)
+        @test size(img_far) == (80, 160)
     end
 end

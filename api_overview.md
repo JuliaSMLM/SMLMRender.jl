@@ -284,8 +284,8 @@ Multi-channel rendering via dispatch on `Vector`.
 **Arguments:**
 - `smlds::Vector` - Vector of SMLD datasets
 - `colors::Vector` - Vector of colors (RGB, Symbol like `:red`, or String like `"green"`)
-- `normalize_each::Bool` - Normalize each channel independently (default: `true`)
-- `clip_percentile::Union{Real, Nothing}` - Per-channel intensity clipping (default: `0.99`): each channel is its own single-color render, clipped at this percentile of its non-zero pixels and normalized. Use `nothing` (saturate mode) for classic two-color overlays where dense regions saturate to white.
+- `clip_percentile::Union{Real, Nothing}` - Per-channel intensity clipping (default: `0.99`): each channel is its own single-color render, clipped at this percentile of its non-zero pixels and scaled so the clip value is full brightness. `nothing` (saturate mode) keeps each channel's raw accumulated intensity.
+- `normalize_each::Bool` - Divide each channel by its own maximum (default: `true`). With a clip percentile the channels are already scaled, so this only brightens a color whose largest component is below 1 (CSS `:green` is `(0, 0.5, 0)`). With `clip_percentile=nothing`, `true` scales each raw channel to its maximum; `false` keeps the raw values, so dense regions saturate to white (the classic two-color overlay).
 - In `pixel_size` mode the shared frame covers the combined extent of all channels; in `zoom` mode it is the camera field of view.
 - All other kwargs same as single-channel render
 
