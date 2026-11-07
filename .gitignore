@@ -6,3 +6,5 @@
 /docs/build/
 /examples/output/
 test_output/
+/benchmark/
+/dev/

@@ -2,6 +2,7 @@
 # November 2026 bug-fix round (findings M1-M6 of the 2026-11-02 review). Each
 # testset fails on v0.4.7 and passes after the fix.
 
+using Test, SMLMRender, SMLMData, Colors
 using SMLMRender: get_ellipse_params
 
 # Inverse of a 2×2 matrix (keeps LinearAlgebra out of the test deps).

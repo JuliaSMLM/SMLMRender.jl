@@ -343,9 +343,11 @@ function foreach_gaussian_pixel(f::F, emitter, target::Image2DTarget,
                                 sigma_x::Float64, sigma_y::Float64,
                                 n_sigmas::Float64, normalization::Symbol;
                                 sigma_xy::Float64=0.0) where {F}
-    x0, y0 = physical_to_pixel(emitter.x, emitter.y, target)
-    x0 = Float64(x0)
-    y0 = Float64(y0)
+    # Bound once: x0 is captured by the closures below, and a reassigned captured
+    # variable is boxed, which makes the whole kernel type-unstable.
+    xp, yp = physical_to_pixel(emitter.x, emitter.y, target)
+    x0 = Float64(xp)
+    y0 = Float64(yp)
 
     # Sigmas in pixels
     sx = sigma_x / target.pixel_size
@@ -370,24 +372,38 @@ function foreach_gaussian_pixel(f::F, emitter, target::Image2DTarget,
     if abs(ρ) < _RHO_FIRST_ORDER
         inv_sx = 1.0 / sx
         inv_sy = 1.0 / sy
+        # Row factors once per blob: ΔΦ and Δφ across each row's edges.
+        n_rows = i_max - i_min + 1
+        wy = Vector{Float64}(undef, n_rows)
+        dy = Vector{Float64}(undef, n_rows)
+        k = (i_min - 0.5 - y0) * inv_sy
+        c_lo = _normcdf(k)
+        p_lo = _normpdf(k)
+        @inbounds for r in 1:n_rows
+            k = (i_min + r - 0.5 - y0) * inv_sy
+            c_hi = _normcdf(k)
+            p_hi = _normpdf(k)
+            wy[r] = c_hi - c_lo
+            dy[r] = p_hi - p_lo
+            c_lo = c_hi
+            p_lo = p_hi
+        end
+        hl = (j_min - 0.5 - x0) * inv_sx
+        c_l = _normcdf(hl)
+        p_l = _normpdf(hl)
         @inbounds for j in j_min:j_max
-            hl = (j - 0.5 - x0) * inv_sx
             hr = (j + 0.5 - x0) * inv_sx
-            wx = scale * (_normcdf(hr) - _normcdf(hl))
-            dx = scale * ρ * (_normpdf(hr) - _normpdf(hl))
-            k_lo = (i_min - 0.5 - y0) * inv_sy
-            c_lo = _normcdf(k_lo)
-            p_lo = _normpdf(k_lo)
-            for i in i_min:i_max
-                k_hi = (i + 0.5 - y0) * inv_sy
-                c_hi = _normcdf(k_hi)
-                p_hi = _normpdf(k_hi)
+            c_r = _normcdf(hr)
+            p_r = _normpdf(hr)
+            wx = scale * (c_r - c_l)
+            dx = scale * ρ * (p_r - p_l)
+            for r in 1:n_rows
                 # max(…, 0): the first-order term can only push a far-tail pixel of
                 # a strongly anisotropic blob below zero, by a negligible amount
-                f(i, j, max(wx * (c_hi - c_lo) + dx * (p_hi - p_lo), 0.0))
-                c_lo = c_hi
-                p_lo = p_hi
+                f(i_min + r - 1, j, max(wx * wy[r] + dx * dy[r], 0.0))
             end
+            c_l = c_r
+            p_l = p_r
         end
     else
         # x | y is normal with mean x0 + β (y - y0) and variance det / σy².
