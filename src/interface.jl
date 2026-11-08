@@ -170,7 +170,10 @@ end
 """
     render(smld, x_edges, y_edges; kwargs...)
 
-Render with explicit pixel edges.
+Render with explicit pixel edges (μm, uniform and increasing). The output pixels
+are square: the edges' mean x and y spacings must agree (to 1e-4 plus the
+rounding of the stored edges; `ArgumentError` otherwise), and the larger is the
+output pixel, so the image covers every edge range.
 """
 function render(smld, x_edges::AbstractVector, y_edges::AbstractVector;
                 strategy::RenderingStrategy = GaussianRender(),
@@ -184,16 +187,22 @@ function render(smld, x_edges::AbstractVector, y_edges::AbstractVector;
                 backend::Symbol = :cpu,
                 filename::Union{String, Nothing} = nothing)
 
-    # Create target from edges
+    # Create target from edges: one square pixel, from the mean spacings (a single
+    # spacing carries the rounding of Float32 edges far from the origin), the
+    # larger of x and y so the grid covers both; the ranges are the grid's extent.
+    (length(x_edges) >= 2 && length(y_edges) >= 2) ||
+        throw(ArgumentError("x_edges and y_edges need at least two edges each"))
     width = length(x_edges) - 1
     height = length(y_edges) - 1
-    pixel_size_x = (x_edges[2] - x_edges[1]) * 1000  # μm to nm
-    pixel_size_y = (y_edges[2] - y_edges[1]) * 1000
-    @assert pixel_size_x ≈ pixel_size_y "Non-square pixels not yet supported"
-
-    x_range = (x_edges[1], x_edges[end])
-    y_range = (y_edges[1], y_edges[end])
-    target = Image2DTarget(width, height, pixel_size_x, x_range, y_range)
+    dx, dy, square = _mean_spacings(x_edges, y_edges)
+    square || throw(ArgumentError("explicit edges need square pixels, but their mean " *
+                                  "spacings are $(dx) nm in x and $(dy) nm in y"))
+    pixel_size = max(dx, dy)
+    x_min = Float64(x_edges[1])
+    y_min = Float64(y_edges[1])
+    target = Image2DTarget(width, height, pixel_size,
+                           (x_min, x_min + width * pixel_size / 1000),
+                           (y_min, y_min + height * pixel_size / 1000))
 
     return render(smld; target=target, strategy=strategy, colormap=colormap,
                  color_by=color_by, color=color, categorical=categorical,

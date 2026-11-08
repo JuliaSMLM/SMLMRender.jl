@@ -269,7 +269,7 @@ Convenience interface. All keyword arguments match `RenderConfig` fields exactly
 
 #### `render(smld, x_edges, y_edges; kwargs...) -> (Matrix{RGB{Float64}}, RenderInfo)`
 
-Render with explicit pixel edges (advanced usage).
+Render with explicit pixel edges (advanced usage). Output pixels are square: the edges' mean x and y spacings must agree (to 1e-4 plus the edges' own rounding; `ArgumentError` otherwise), and the larger is the output pixel, so the image covers both edge ranges.
 
 **Arguments:**
 - `smld` - SMLD dataset

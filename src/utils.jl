@@ -272,14 +272,22 @@ pixel count), so a square Float32 camera far from the origin always passes.
 function check_square_camera_pixels(camera)
     ex, ey = camera.pixel_edges_x, camera.pixel_edges_y
     (length(ex) >= 2 && length(ey) >= 2) || error("Cannot determine pixel size from camera")
-    nx, ny = length(ex) - 1, length(ey) - 1
-    dx = (Float64(ex[end]) - Float64(ex[1])) / nx * 1000  # nm
-    dy = (Float64(ey[end]) - Float64(ey[1])) / ny * 1000
-    rounding = 1000 * (_edge_ulp(ex) / nx + _edge_ulp(ey) / ny)
-    abs(dx - dy) <= 1e-4 * max(dx, dy) + rounding && return nothing
+    dx, dy, square = _mean_spacings(ex, ey)
+    square && return nothing
     throw(ArgumentError("zoom mode needs square camera pixels, but this camera's " *
                         "pixels are $(dx) nm in x and $(dy) nm in y; render with " *
                         "pixel_size= or an explicit target instead"))
+end
+
+# Mean x and y spacings of two edge vectors (μm in, nm out), and whether they
+# agree to 1e-4 plus the rounding of the stored edges: one unit in the last
+# place of an axis's largest edge, in the edges' own type, over its pixel count.
+function _mean_spacings(ex, ey)
+    nx, ny = length(ex) - 1, length(ey) - 1
+    dx = (Float64(ex[end]) - Float64(ex[1])) / nx * 1000
+    dy = (Float64(ey[end]) - Float64(ey[1])) / ny * 1000
+    rounding = 1000 * (_edge_ulp(ex) / nx + _edge_ulp(ey) / ny)
+    return dx, dy, abs(dx - dy) <= 1e-4 * max(dx, dy) + rounding
 end
 
 # Output pixels along a camera axis whose pixel count times zoom is nz: the

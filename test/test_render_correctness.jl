@@ -389,6 +389,17 @@ end
         (img_10mm, _) = render(BasicSMLD([e_10mm], tenmm, 1, 1); zoom=256, hist...)
         @test size(img_10mm) == (2048, 256)
         @test count(c -> red(c) > 0, img_10mm) == 1
+        # Explicit edges follow the same rules: square Float32 edges far from the
+        # origin render, covering both ranges; rectangular edges are refused.
+        ex32 = Float32.(1000 .+ 0.1 .* (0:16))
+        ey32 = Float32.(0.1 .* (0:8))
+        e_edges = Emitter2DFit{Float32}(1001.5999f0, 0.7999f0, 1000f0, 10f0, 0.01f0, 0.01f0, 50f0, 2f0)
+        (img_edges, _) = render(BasicSMLD([e_edges], IdealCamera(4, 4, 0.1), 1, 1), ex32, ey32;
+                                strategy=HistogramRender(), color=:white)
+        @test size(img_edges) == (8, 16)
+        @test count(c -> red(c) > 0, img_edges) == 1
+        @test_throws ArgumentError render(BasicSMLD([emitter_at(0.25, 0.25)], IdealCamera(4, 4, 0.1), 1, 1),
+                                          0.0:0.1:1.6, 0.0:0.2:1.6; strategy=HistogramRender(), color=:white)
     end
 
     @testset "Tail-only Gaussian intensities normalize to finite colors" begin
