@@ -39,9 +39,10 @@ struct HistogramRender <: Render2DStrategy end
 
 Renders each localization as a 2D Gaussian blob. Provides smooth,
 publication-quality images with sub-pixel accuracy. Each pixel holds the
-Gaussian integrated over that pixel (not sampled at its center), so a
-localization's brightness does not depend on where it falls inside a pixel,
-even when its sigma is a fraction of a pixel.
+Gaussian integrated over that pixel (not sampled at its center). Under
+`normalization = :integral` (the default), each localization adds the same total
+intensity wherever it falls inside a pixel, even when its sigma is a fraction of
+a pixel, before the image's contrast scaling.
 
 # Fields
 - `n_sigmas::Float64`: How many standard deviations to render (default: 3.0)

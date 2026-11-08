@@ -435,13 +435,12 @@ function apply_intensity_weighted_color(intensity::Matrix{Float64},
         intensity_norm = normalize_to_01(intensity_norm)
     end
 
-    # Small epsilon to avoid division by zero
-    ε = 1e-6
-
     for i in 1:height, j in 1:width
         S = intensity[i, j]
 
-        if S > ε
+        # Any pixel with intensity gets its color: a fixed threshold would drop
+        # real mass wherever a Gaussian spreads over many small pixels
+        if S > 0
             # Compute average color (from original, unclipped intensity)
             r_avg = r_num[i, j] / S
             g_avg = g_num[i, j] / S
@@ -455,7 +454,7 @@ function apply_intensity_weighted_color(intensity::Matrix{Float64},
                              g_avg * brightness,
                              b_avg * brightness)
         end
-        # else: pixel stays black (S ≈ 0)
+        # else: pixel stays black (no intensity)
     end
 
     return result

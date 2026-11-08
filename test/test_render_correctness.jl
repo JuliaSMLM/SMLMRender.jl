@@ -202,6 +202,61 @@ end
         end
     end
 
+    @testset ":maximum finds the window's brightest pixel by its ridge search" begin
+        # The frame starts 3 rows below the localization's row, so the peak lies
+        # outside it. Its pixels must equal the full window's integral render
+        # divided by that window's brightest pixel: on both kernel paths, both
+        # search axes, and thin tilted blobs whose brightest pixel is not the one
+        # nearest their center.
+        golden = 0.6180339887498949
+        cfg(n) = RenderConfig(color=:white, clip_percentile=nothing,
+                              strategy=GaussianRender(normalization=n))
+        k = 0
+        for (σx, σy) in ((2.0, 2.0), (3.0, 12.0), (12.0, 3.0), (25.0, 4.0), (4.0, 25.0), (1.5, 30.0)),
+            ρ in (0.0, 0.006, -0.009, 0.3, -0.8, 0.97, -0.999)
+            k += 1
+            x = 0.300 + 0.01 * mod(k * golden, 1.0)              # inside pixel 31 (μm)
+            y = 0.300 + 0.01 * mod(k * golden^2 + 0.37, 1.0)
+            e = Emitter2DFit{Float64}(x, y, 1000.0, 10.0, σx / 1000, σy / 1000, 50.0, 2.0;
+                                      σ_xy=ρ * σx * σy / 1e6)
+            smld = BasicSMLD([e], IdealCamera(8, 8, 0.1), 1, 1)
+            (full, _) = render(smld, Image2DTarget(61, 61, 10.0, (0.0, 0.61), (0.0, 0.61)), cfg(:integral))
+            (cut, _) = render(smld, Image2DTarget(61, 28, 10.0, (0.0, 0.61), (0.33, 0.61)), cfg(:maximum))
+            @test map(red, cut) ≈ map(red, full[34:61, :]) ./ maximum(red, full)
+        end
+        # Cost: a wide correlated blob on a tiny frame evaluates only its in-image
+        # pixels (bb013e4 built the whole window's 1202 × 1202 corner grid, 11.6 MB).
+        e = Emitter2DFit{Float64}(0.005, 0.005, 1000.0, 10.0, 0.2, 0.2, 50.0, 2.0; σ_xy=0.3 * 0.2 * 0.2)
+        smld = BasicSMLD([e], IdealCamera(4, 4, 0.1), 1, 1)
+        tiny = Image2DTarget(10, 10, 1.0, (0.0, 0.01), (0.0, 0.01))
+        (img, _) = render(smld, tiny, cfg(:maximum))
+        @test maximum(red, img) ≈ 1.0
+        @test (@allocated render(smld, tiny, cfg(:maximum))) < 1_000_000
+    end
+
+    @testset "Gaussian field and categorical color every pixel with intensity" begin
+        # σ = 500 nm on 1 nm pixels: each pixel holds about 6e-7 of the
+        # localization's mass, below the fixed 1e-6 cut once applied before coloring.
+        e = Emitter2DFit{Float64}(0.0205, 0.0205, 1000.0, 10.0, 0.5, 0.5, 50.0, 2.0; id=1)
+        smld = BasicSMLD([e], IdealCamera(4, 4, 0.1), 1, 1)
+        target = Image2DTarget(41, 41, 1.0, (0.0, 0.041), (0.0, 0.041))
+        strategy = GaussianRender(n_sigmas=0.02)         # a 21-pixel window inside the frame
+        (white, _) = render(smld, target, RenderConfig(strategy=strategy, color=:white,
+                                                      clip_percentile=nothing))
+        lit = count(c -> red(c) > 0, white)
+        @test lit >= 441
+        for clip in (nothing, 0.99), kw in ((color_by=:photons,), (color_by=:id, categorical=true))
+            (img, _) = render(smld, target, RenderConfig(; strategy=strategy, clip_percentile=clip, kw...))
+            @test count(c -> red(c) + green(c) + blue(c) > 0, img) == lit
+        end
+        # Raw categorical: each pixel is the category's color times its intensity.
+        (cat, _) = render(smld, target, RenderConfig(strategy=strategy, color_by=:id,
+                                                    categorical=true, clip_percentile=nothing))
+        ratio = [(red(cat[k]) + green(cat[k]) + blue(cat[k])) / red(white[k])
+                 for k in eachindex(white) if red(white[k]) > 0]
+        @test maximum(ratio) - minimum(ratio) < 1e-9 * maximum(ratio)
+    end
+
     @testset "M3: ellipse outline is the covariance ellipse" begin
         strategy = EllipseRender(radius_factor=2.0)
         mahalanobis_error(e) = begin
@@ -258,5 +313,22 @@ end
         e_far = Emitter2DFit{Float32}(1000.25f0, 0.35f0, 1000f0, 10f0, 0.01f0, 0.01f0, 50f0, 2f0)
         (img_far, _) = render(BasicSMLD([e_far], far, 1, 1); zoom=10)
         @test size(img_far) == (80, 160)
+        # The output grid spans the camera's own extent (its first spacing would
+        # cut 0.37 nm off the far edge), so a localization just inside it renders.
+        t_far = create_target_from_smld(BasicSMLD([e_far], far, 1, 1); zoom=10)
+        @test t_far.width * t_far.pixel_size / 1000 ≈
+              Float64(far.pixel_edges_x[end]) - Float64(far.pixel_edges_x[1])
+        e_edge = Emitter2DFit{Float32}(1001.5999f0, 0.35f0, 1000f0, 10f0, 0.01f0, 0.01f0, 50f0, 2f0)
+        (img_edge, _) = render(BasicSMLD([e_edge], far, 1, 1); zoom=10,
+                               strategy=HistogramRender(), color=:white)
+        @test count(c -> red(c) > 0, img_edge) == 1
+        # A one-pixel axis cannot average its rounding away; the tolerance covers it.
+        one_px = IdealCamera{Float32}(Float32.(1000 .+ 0.1 .* (0:1)), Float32.(0.1 .* (0:8)))
+        e_one = Emitter2DFit{Float32}(1000.05f0, 0.35f0, 1000f0, 10f0, 0.01f0, 0.01f0, 50f0, 2f0)
+        (img_one, _) = render(BasicSMLD([e_one], one_px, 1, 1); zoom=10)
+        @test size(img_one) == (80, 10)
+        # ...while pixels 0.1% apart are still refused.
+        @test_throws ArgumentError render(BasicSMLD([emitter_at(0.25, 0.25)],
+                                                    IdealCamera(16, 8, (0.1, 0.1001)), 1, 1); zoom=10)
     end
 end

@@ -152,8 +152,6 @@ function create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, roi=not
 
         camera = smld.camera
         check_square_camera_pixels(camera)
-        camera_pixel_size = get_camera_pixel_size(camera)  # nm
-        pixel_size = camera_pixel_size / zoom
 
         # Determine pixel ranges (handle roi parameter)
         n_camera_px_x = length(camera.pixel_edges_x) - 1
@@ -175,6 +173,11 @@ function create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, roi=not
         x_max = camera.pixel_edges_x[last(x_range) + 1]
         y_min = camera.pixel_edges_y[first(y_range)]
         y_max = camera.pixel_edges_y[last(y_range) + 1]
+
+        # Output pixel size from the ROI's own extent, so the output grid spans
+        # exactly its camera pixels. (A single spacing carries the rounding of
+        # Float32 edges far from the origin into every output pixel.)
+        pixel_size = (Float64(x_max) - Float64(x_min)) * 1000 / length(x_range) / zoom
 
         # Output dimensions: roi_pixels × zoom
         width = round(Int, length(x_range) * zoom)
@@ -224,16 +227,14 @@ end
 """
     get_camera_pixel_size(camera)
 
-Get pixel size in nm from camera object (the x spacing of the first pixel).
+Camera pixel size in nm, as `Float64`: the mean x spacing over the whole field.
+The mean, not the first spacing, so that Float32 rounding of edges far from the
+origin does not carry into a grid built from it.
 """
 function get_camera_pixel_size(camera)
-    # For IdealCamera and SCMOSCamera, assume square pixels
-    # Pixel size = difference between first two pixel edges
-    if length(camera.pixel_edges_x) >= 2
-        return (camera.pixel_edges_x[2] - camera.pixel_edges_x[1]) * 1000  # μm to nm
-    else
-        error("Cannot determine pixel size from camera")
-    end
+    ex = camera.pixel_edges_x
+    length(ex) >= 2 || error("Cannot determine pixel size from camera")
+    return (Float64(ex[end]) - Float64(ex[1])) / (length(ex) - 1) * 1000  # μm to nm
 end
 
 """
@@ -242,19 +243,26 @@ end
 Throw an `ArgumentError` unless the camera's x and y pixel sizes agree. Zoom mode
 subdivides camera pixels into square output pixels, so a rectangular-pixel camera
 would have y scaled by the x size and part of its field cut off. The sizes are
-compared as mean spacings over the whole field, so Float32 rounding of edges far
-from the origin cannot trip the check.
+compared as mean spacings over the whole field, to 1e-4 plus the rounding of the
+stored edges (one unit in the last place of an axis's largest edge, over its
+pixel count), so a square Float32 camera far from the origin always passes.
 """
 function check_square_camera_pixels(camera)
     ex, ey = camera.pixel_edges_x, camera.pixel_edges_y
     (length(ex) >= 2 && length(ey) >= 2) || error("Cannot determine pixel size from camera")
-    dx = (Float64(ex[end]) - Float64(ex[1])) / (length(ex) - 1) * 1000  # nm
-    dy = (Float64(ey[end]) - Float64(ey[1])) / (length(ey) - 1) * 1000
-    isapprox(dx, dy; rtol=1e-4) && return nothing
+    nx, ny = length(ex) - 1, length(ey) - 1
+    dx = (Float64(ex[end]) - Float64(ex[1])) / nx * 1000  # nm
+    dy = (Float64(ey[end]) - Float64(ey[1])) / ny * 1000
+    rounding = 1000 * (_edge_ulp(ex) / nx + _edge_ulp(ey) / ny)
+    abs(dx - dy) <= 1e-4 * max(dx, dy) + rounding && return nothing
     throw(ArgumentError("zoom mode needs square camera pixels, but this camera's " *
                         "pixels are $(dx) nm in x and $(dy) nm in y; render with " *
                         "pixel_size= or an explicit target instead"))
 end
+
+# One unit in the last place, in the edges' own number type, of the largest
+# edge magnitude (the edges are monotonic, so it sits at an end).
+_edge_ulp(e) = Float64(eps(float(max(abs(first(e)), abs(last(e))))))
 
 """
     calculate_field_range(smld, field::Symbol, clip_percentiles; frame_offsets=nothing)

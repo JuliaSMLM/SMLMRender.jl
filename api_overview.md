@@ -41,7 +41,7 @@ Physical coordinates are in micrometers (μm). Pixel sizes are in nanometers (nm
 
 **HistogramRender:** Fast binning - counts localizations per pixel. No sub-pixel accuracy. Best for quick previews or very dense data.
 
-**GaussianRender:** Renders each localization as a 2D Gaussian blob. Provides smooth, publication-quality images with sub-pixel accuracy. Can use localization precision (σ_x, σ_y, σ_xy fields) or fixed sigma. Each pixel holds the Gaussian integrated over that pixel, so a localization's brightness does not depend on where it falls inside a pixel, even for sigmas well below a pixel.
+**GaussianRender:** Renders each localization as a 2D Gaussian blob. Provides smooth, publication-quality images with sub-pixel accuracy. Can use localization precision (σ_x, σ_y, σ_xy fields) or fixed sigma. Each pixel holds the Gaussian integrated over that pixel. Under `normalization=:integral` (the default), each localization adds the same total intensity wherever it falls inside a pixel, even for sigmas well below a pixel, before the image's contrast scaling. Under `:maximum`, its brightest pixel is 1 and its total depends on where it falls in a pixel.
 
 **CircleRender:** Renders localization as circle outline. Useful for visualizing localization precision when σ represents uncertainty radius. Circle radius can be multiple of σ.
 

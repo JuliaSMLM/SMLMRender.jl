@@ -23,7 +23,7 @@ SMLM experiments produce lists of localization coordinates (x, y, and optionally
 Four strategies control *how* each localization appears in the image:
 
 - **Histogram** bins localizations into pixels. Fast, no sub-pixel accuracy. Best for quick previews and dense datasets.
-- **Gaussian** renders each localization as a smooth 2D Gaussian blob. When `use_localization_precision=true`, the blob width comes from the emitter's σ_x and σ_y fields (from `EmitterFit` types), giving narrower blobs for high-photon localizations. Each pixel holds the Gaussian integrated over that pixel, so brightness does not depend on sub-pixel position. This is the default strategy.
+- **Gaussian** renders each localization as a smooth 2D Gaussian blob. When `use_localization_precision=true`, the blob width comes from the emitter's σ_x and σ_y fields (from `EmitterFit` types), giving narrower blobs for high-photon localizations. Each pixel holds the Gaussian integrated over that pixel. With the default `normalization=:integral`, each localization adds the same total intensity wherever it falls inside a pixel, before the image's contrast scaling; `:maximum` instead fixes each localization's brightest pixel at 1. This is the default strategy.
 - **Circle** draws a circle outline at each localization, with radius derived from the localization precision (σ_x). Useful for visualizing uncertainty per localization.
 - **Ellipse** draws the outline of each localization's covariance ellipse from σ_x, σ_y, and σ_xy (`EmitterFit` types), showing anisotropic localization precision.
 

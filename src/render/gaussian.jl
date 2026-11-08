@@ -322,9 +322,11 @@ beyond the pixels next to the center.
 - `normalization = :maximum`: the same pixel integrals scaled so the
   localization's brightest pixel is 1, wherever it falls and whatever its sigma.
   The peak is taken over the whole window, so a localization just outside the
-  image still shows only its dim tail. Because the peak is fixed, the total
-  depends on where the localization falls in a pixel (by up to about 26% at a
-  1-pixel sigma, more below); use `:integral` for position-independent totals.
+  image still shows only its dim tail; it is found by a search along the
+  window's ridge, so only in-image pixels are evaluated in full. Because the
+  peak is fixed, the total depends on where the localization falls in a pixel
+  (by up to about 26% at a 1-pixel sigma, more below); use `:integral` for
+  position-independent totals.
 
 Uncorrelated x and y use the exact product of normal-CDF differences. A
 correlation `|ρ| < 0.01` adds its first-order term (error below 1.2e-5 of the
@@ -351,39 +353,99 @@ function foreach_gaussian_pixel(f::F, emitter, target::Image2DTarget,
     i_lo = floor(Int, y0) - half_width
     i_hi = ceil(Int, y0) + half_width
     (j_hi < 1 || j_lo > target.width || i_hi < 1 || i_lo > target.height) && return nothing
-    peak = normalization === :maximum
-    if !peak
-        # :integral needs only the in-image pixels; :maximum keeps the whole
-        # window so it sees the true peak.
-        j_lo = max(j_lo, 1)
-        j_hi = min(j_hi, target.width)
-        i_lo = max(i_lo, 1)
-        i_hi = min(i_hi, target.height)
-    end
-    n_cols = j_hi - j_lo + 1
-    n_rows = i_hi - i_lo + 1
 
     det = sx^2 * sy^2 - sxy^2
     ρ = det > 0 ? sxy / (sx * sy) : 0.0   # not positive definite: axis-aligned
+
+    # :maximum scales by the brightest pixel of the whole window, which can lie
+    # outside the image; the ridge search finds it without the off-image pixels.
+    peak = normalization === :maximum
+    window_peak = peak ? _window_peak(x0, y0, sx, sy, ρ, i_lo, i_hi, j_lo, j_hi) : 0.0
+
+    # Every other evaluation covers only the in-image part of the window
+    j_lo = max(j_lo, 1)
+    j_hi = min(j_hi, target.width)
+    i_lo = max(i_lo, 1)
+    i_hi = min(i_hi, target.height)
+    n_cols = j_hi - j_lo + 1
+    n_rows = i_hi - i_lo + 1
 
     if abs(ρ) < _RHO_FIRST_ORDER
         # ΔΦ and Δφ across each column's and each row's standardized edges
         wx, dx = _edge_terms(j_lo, n_cols, x0, sx)
         wy, dy = _edge_terms(i_lo, n_rows, y0, sy)
-        # max(…, 0): the first-order term can only push a far-tail pixel of a
-        # strongly anisotropic blob below zero, by a negligible amount
-        pixel_mass = (r, c) -> @inbounds max(wx[c] * wy[r] + ρ * dx[c] * dy[r], 0.0)
-        _emit_blob(f, pixel_mass, i_lo, j_lo, n_rows, n_cols, target, peak)
+        pixel_mass = (r, c) -> @inbounds _first_order_mass(wx[c], dx[c], wy[r], dy[r], ρ)
+        _emit_blob(f, pixel_mass, i_lo, j_lo, n_rows, n_cols, peak, window_peak)
     else
-        # Bivariate normal CDF at every pixel corner of the window
+        # Bivariate normal CDF at every pixel corner
         G = Matrix{Float64}(undef, n_rows + 1, n_cols + 1)
         @inbounds for c in 1:(n_cols + 1), r in 1:(n_rows + 1)
             G[r, c] = bvncdf((j_lo + c - 1.5 - x0) / sx, (i_lo + r - 1.5 - y0) / sy, ρ)
         end
-        pixel_mass = (r, c) -> @inbounds max(G[r + 1, c + 1] - G[r, c + 1] - G[r + 1, c] + G[r, c], 0.0)
-        _emit_blob(f, pixel_mass, i_lo, j_lo, n_rows, n_cols, target, peak)
+        pixel_mass = (r, c) -> @inbounds _corner_mass(G[r + 1, c + 1], G[r, c + 1], G[r + 1, c], G[r, c])
+        _emit_blob(f, pixel_mass, i_lo, j_lo, n_rows, n_cols, peak, window_peak)
     end
     return nothing
+end
+
+# A pixel's mass from its ΔΦ and Δφ terms to first order in ρ. max(…, 0): the
+# first-order term can only push a far-tail pixel of a strongly anisotropic blob
+# below zero, by a negligible amount.
+@inline _first_order_mass(wx, dx, wy, dy, ρ) = max(wx * wy + ρ * dx * dy, 0.0)
+
+# A pixel's mass from the bivariate normal CDF at its corners (x high/low, y high/low).
+@inline _corner_mass(g_hh, g_hl, g_lh, g_ll) = max(g_hh - g_hl - g_lh + g_ll, 0.0)
+
+# Mass of pixel (row i, column j), computed exactly as the kernel computes it.
+@inline function _pixel_mass_at(i::Int, j::Int, x0, y0, sx, sy, ρ)
+    xl = (j - 0.5 - x0) / sx
+    xh = (j + 0.5 - x0) / sx
+    yl = (i - 0.5 - y0) / sy
+    yh = (i + 0.5 - y0) / sy
+    if abs(ρ) < _RHO_FIRST_ORDER
+        return _first_order_mass(normcdf(xh) - normcdf(xl), normpdf(xh) - normpdf(xl),
+                                 normcdf(yh) - normcdf(yl), normpdf(yh) - normpdf(yl), ρ)
+    end
+    return _corner_mass(bvncdf(xh, yh, ρ), bvncdf(xh, yl, ρ), bvncdf(xl, yh, ρ), bvncdf(xl, yl, ρ))
+end
+
+# Brightest pixel mass in rows i_lo:i_hi and columns j_lo:j_hi, found without
+# evaluating the whole window. Within one row (a strip of y), the pixel masses
+# are a log-concave function of the column (Prékopa), and the strip's x density
+# is a mixture of equal-width normals whose means, x0 + β(y - y0) with
+# β = ρσx/σy, span |β| over the strip; so the row's mode lies within half a pixel
+# of that span and its brightest pixel is one of the columns next to it. Rows are
+# visited outward from the brightest row of the y marginal (where the row masses
+# fall monotonically) and the walk stops once a row's total mass, times the
+# largest share of it one pixel can hold (the conditional density bound
+# 1/(σ_{x|y}√(2π))), cannot beat the best pixel found. The search runs along the
+# axis with the smaller conditional slope, so |β| ≤ |ρ| < 1 and each row has at
+# most four candidates.
+function _window_peak(x0, y0, sx, sy, ρ, i_lo::Int, i_hi::Int, j_lo::Int, j_hi::Int)
+    rows = sx <= sy   # |ρ·sx/sy| ≤ |ρ·sy/sx|: walk rows, candidates along x
+    u0, v0, su, sv = rows ? (x0, y0, sx, sy) : (y0, x0, sy, sx)
+    u_lo, u_hi, v_lo, v_hi = rows ? (j_lo, j_hi, i_lo, i_hi) : (i_lo, i_hi, j_lo, j_hi)
+    β = ρ * su / sv
+    share = min(1.0, 1 / (su * sqrt(1 - ρ^2) * sqrt(2π)))
+    best = 0.0
+    vc = clamp(round(Int, v0), v_lo, v_hi)
+    for (v_start, step) in ((vc, 1), (vc - 1, -1))
+        v = v_start
+        while v_lo <= v <= v_hi
+            line = normcdf((v + 0.5 - v0) / sv) - normcdf((v - 0.5 - v0) / sv)
+            line * share <= best && break
+            m = u0 + β * (v - v0)
+            u_a = clamp(floor(Int, m - abs(β) / 2 - 0.5), u_lo, u_hi)
+            u_b = clamp(ceil(Int, m + abs(β) / 2 + 0.5), u_lo, u_hi)
+            for u in u_a:u_b
+                w = rows ? _pixel_mass_at(v, u, x0, y0, sx, sy, ρ) :
+                           _pixel_mass_at(u, v, x0, y0, sx, sy, ρ)
+                best = max(best, w)
+            end
+            v += step
+        end
+    end
+    return best
 end
 
 # Differences of the standard normal CDF (ΔΦ) and density (Δφ) across the edges
@@ -407,22 +469,24 @@ function _edge_terms(lo::Int, n::Int, μ::Float64, s::Float64)
     return w, d
 end
 
-# Call f(i, j, w) for the in-image pixels of a window, scaling by the window's
-# brightest pixel when `peak` (normalization = :maximum).
+# Call f(i, j, w) for the in-image pixels (rows i_lo:i_lo+n_rows-1, columns
+# j_lo:j_lo+n_cols-1). When `peak` (normalization = :maximum) every value is
+# divided by the brightest pixel: the window's, from the ridge search, or an
+# in-image pixel's if rounding puts it a hair higher, so no pixel exceeds 1.
 @inline function _emit_blob(f::F, pixel_mass::P, i_lo::Int, j_lo::Int, n_rows::Int, n_cols::Int,
-                            target::Image2DTarget, peak::Bool) where {F, P}
+                            peak::Bool, window_peak::Float64) where {F, P}
     scale = 1.0
     if peak
-        m = 0.0
+        m = window_peak
         for c in 1:n_cols, r in 1:n_rows
             m = max(m, pixel_mass(r, c))
         end
         m > 0 || return nothing
         scale = 1.0 / m
     end
-    for c in max(1, 2 - j_lo):min(n_cols, target.width - j_lo + 1)
+    for c in 1:n_cols
         j = j_lo + c - 1
-        for r in max(1, 2 - i_lo):min(n_rows, target.height - i_lo + 1)
+        for r in 1:n_rows
             f(i_lo + r - 1, j, scale * pixel_mass(r, c))
         end
     end
