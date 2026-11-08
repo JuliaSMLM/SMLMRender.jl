@@ -372,9 +372,9 @@ end
             @test count(c -> red(c) > 0, img_tiny) == 1
         end
         # Whole products stay whole at any size, and floating-point noise in a
-        # computed zoom adds no pixel (targets only, no image).
+        # zoom adds no pixel: 3 plus two ulps still gives 3 (targets only, no image).
         @test create_target_from_smld(tiny; zoom=1_000_000_000).width == 1_000_000_000
-        @test create_target_from_smld(tiny; zoom=0.1 * 30).width == 3
+        @test create_target_from_smld(tiny; zoom=nextfloat(3.0, 2)).width == 3
         # Unequal rounding on the two axes keeps each one's overshoot below one
         # output pixel (a 1 × 20,000 camera at zoom 100.000099: 101 × 2,000,002).
         long = BasicSMLD([emitter_at(0.05, 0.05)], IdealCamera(1, 20_000, 0.1), 1, 1)
