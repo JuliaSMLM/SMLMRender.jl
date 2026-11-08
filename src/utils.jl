@@ -134,10 +134,10 @@ camera pixel subdivided `zoom` times (output pixel = camera pixel / zoom). When
 # Arguments
 - `smld`: SMLD dataset (must have .emitters field)
 - `pixel_size`: Pixel size in nm (uses data bounds + margin)
-- `zoom`: Zoom factor, positive. A whole-number zoom renders exactly the camera
-  FOV with camera_pixels × zoom output pixels (a product within a millionth of a
-  whole number counts as whole). A fractional zoom rounds each dimension up, so
-  the image covers the FOV and extends past it by less than one output pixel;
+- `zoom`: Zoom factor, positive, used at its Float64 value (a Float32 `1.1f0` is
+  1.1000000238…). A whole-number zoom renders exactly the camera FOV with
+  camera_pixels × zoom output pixels. A fractional zoom rounds each dimension up,
+  so the image covers the FOV and extends past it by less than one output pixel;
   the target's ranges give the extent. Needs square camera pixels
   (`ArgumentError` otherwise); when Float32 edges round the x and y spacings
   slightly differently, the axis with the smaller spacing extends past its field
@@ -180,30 +180,17 @@ function create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, roi=not
         y_min = camera.pixel_edges_y[first(y_range)]
         y_max = camera.pixel_edges_y[last(y_range) + 1]
 
-        # One zoom arithmetic for every entry point: RenderConfig stores zoom as
-        # Float64, so a Float32 zoom passed here directly gives the same grid.
+        # One zoom arithmetic for every entry point: zoom is used at its Float64
+        # value (RenderConfig stores it so), whatever type it was passed in.
         z = Float64(zoom)
         (isfinite(z) && z > 0) || throw(ArgumentError("zoom must be positive and finite, got $zoom"))
 
-        # Output dimensions from the camera pixel counts: roi_pixels × zoom (see
-        # _zoom_pixels: whole products stay whole, fractional ones round up).
-        width = _zoom_pixels(length(x_range) * z)
-        height = _zoom_pixels(length(y_range) * z)
-
-        # Output pixel: the camera pixel over zoom, taking the camera pixel as the
-        # field's mean spacing, the larger of x and y (Float32 edges far from the
-        # origin round each axis's extent differently); and never less than an
-        # axis's extent over its pixel count, so the grid always covers the field.
-        # A fractional zoom extends the last column or row past the field by less
-        # than one output pixel; the axis with the smaller stored spacing extends
-        # past it by the spacings' difference. The target's ranges are the grid's
-        # own extent.
         x_ext = Float64(x_max) - Float64(x_min)
         y_ext = Float64(y_max) - Float64(y_min)
-        pixel_size = max(max(x_ext / length(x_range), y_ext / length(y_range)) / z,
-                         x_ext / width, y_ext / height) * 1000
-        x_max = x_min + width * pixel_size / 1000
-        y_max = y_min + height * pixel_size / 1000
+        width, height, ps_um = _zoom_grid(length(x_range), length(y_range), x_ext, y_ext, z)
+        pixel_size = ps_um * 1000
+        x_max = x_min + width * ps_um
+        y_max = y_min + height * ps_um
 
     # Mode 2: pixel_size specified - use data bounds + margin
     else
@@ -290,16 +277,38 @@ function _mean_spacings(ex, ey)
     return dx, dy, abs(dx - dy) <= 1e-4 * max(dx, dy) + rounding
 end
 
-# Output pixels along a camera axis whose pixel count times zoom is nz: the
-# nearest whole number when nz is within a millionth (relative) of it, otherwise
-# nz rounded up; at least 1. The tolerance absorbs floating-point noise in zoom,
-# a Float32 zoom included, at any size of nz; when it rounds down, the zoom
-# branch's output pixel grows by at most that millionth, so the grid still
-# covers the field.
-function _zoom_pixels(nz::Float64)
-    k = round(nz)
-    n = abs(nz - k) <= 1e-6 * nz ? k : ceil(nz)
-    return max(1, Int(n))
+# Zoom-mode grid for an ROI of nx × ny camera pixels spanning x_ext × y_ext μm at
+# zoom z: (width, height, output pixel in μm).
+#
+# - An axis whose nz = n·z is whole, to floating-point rounding (64 ulp), gets
+#   exactly nz pixels; any other axis is fractional and rounds up.
+# - The output pixel is the camera pixel over zoom, the camera pixel being the
+#   larger mean spacing of x and y (Float32 edges far from the origin round each
+#   axis's extent differently), and never less than an axis's extent over its
+#   pixel count, so the grid always covers the field. Only floating-point
+#   rounding of a whole axis can raise it above the camera pixel over zoom.
+# - A fractional axis then gets the fewest pixels that cover its extent at that
+#   pixel, so it extends past its field by less than one output pixel. A whole
+#   axis extends past its field only by the difference of the x and y spacings.
+function _zoom_grid(nx::Int, ny::Int, x_ext::Float64, y_ext::Float64, z::Float64)
+    whole(nz) = abs(nz - round(nz)) <= 64 * eps(max(nz, 1.0))
+    npix(nz) = max(1, whole(nz) ? round(Int, nz) : ceil(Int, nz))
+    nzx, nzy = nx * z, ny * z
+    width, height = npix(nzx), npix(nzy)
+    ps = max(max(x_ext / nx, y_ext / ny) / z, x_ext / width, y_ext / height)
+    whole(nzx) || (width = _covering_pixels(x_ext, ps))
+    whole(nzy) || (height = _covering_pixels(y_ext, ps))
+    return width, height, ps
+end
+
+# The fewest pixels of size ps whose span reaches ext, checked exactly.
+function _covering_pixels(ext::Float64, ps::Float64)
+    c = max(1, ceil(Int, ext / ps))
+    c * ps < ext && (c += 1)
+    while c > 1 && (c - 1) * ps >= ext
+        c -= 1
+    end
+    return c
 end
 
 # One unit in the last place, in the edges' own number type, of the largest
