@@ -344,14 +344,22 @@ end
         (img_roi, _) = render(BasicSMLD([e_top], far, 1, 1); zoom=10, roi=(1:1, :), hist...)
         @test size(img_roi) == (80, 10)
         @test count(c -> red(c) > 0, img_roi) == 1
-        # A fractional zoom rounds the output size (4.5 -> 4); the grid still covers
-        # the whole 300 nm field.
-        three = BasicSMLD([emitter_at(0.29, 0.29)], IdealCamera(3, 3, 0.1), 1, 1)
-        t3 = create_target_from_smld(three; zoom=1.5)
-        @test (t3.width, t3.height) == (4, 4)
-        @test t3.width * t3.pixel_size ≈ 300.0
-        (img3, _) = render(three; zoom=1.5, hist...)
-        @test count(c -> red(c) > 0, img3) == 1
+        # A fractional zoom keeps output pixel = camera pixel / zoom and rounds each
+        # dimension up: 3 × 1.5 = 4.5 -> 5 columns, 4 × 1.5 = 6 rows. The grid covers
+        # the 300 × 400 nm field, overshoots it by less than one output pixel, and
+        # its ranges give its extent.
+        cam34 = IdealCamera(3, 4, 0.1)
+        t34 = create_target_from_smld(BasicSMLD([emitter_at(0.15, 0.2)], cam34, 1, 1); zoom=1.5)
+        @test (t34.width, t34.height) == (5, 6)
+        @test t34.pixel_size ≈ 100 / 1.5
+        @test t34.x_range[2] ≈ 5 * t34.pixel_size / 1000
+        @test t34.y_range[2] ≈ 0.4
+        (img34, _) = render(BasicSMLD([emitter_at(0.29, 0.39)], cam34, 1, 1); zoom=1.5, hist...)
+        @test count(c -> red(c) > 0, img34) == 1
+        # A whole dimension gets no padding: a localization 25 nm past the field
+        # stays out of the image.
+        (img_out, _) = render(BasicSMLD([emitter_at(0.15, 0.425)], cam34, 1, 1); zoom=1.5, hist...)
+        @test !any(c -> red(c) > 0, img_out)
     end
 
     @testset "Tail-only Gaussian intensities normalize to finite colors" begin

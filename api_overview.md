@@ -29,7 +29,7 @@ SMLMRender converts localization data into publication-quality images through a 
 
 ### Resolution Modes
 
-**Zoom Mode:** Renders the exact camera field-of-view (FOV) with subdivided pixels. A 128×128 pixel camera with `zoom=10` produces exactly 1280×1280 output pixels covering the same physical region. Output range precisely matches camera FOV. Use this for faithful camera FOV representation.
+**Zoom Mode:** Renders the exact camera field-of-view (FOV) with subdivided pixels. A 128×128 pixel camera with `zoom=10` produces exactly 1280×1280 output pixels covering the same physical region. Output range precisely matches camera FOV for a whole-number zoom; a fractional zoom rounds the size up, so the image extends past the FOV by less than one output pixel (the target's ranges give the extent). Use this for faithful camera FOV representation.
 
 **Pixel Size Mode:** Uses data bounds (min/max of localization coordinates) plus a margin, with specified pixel size in nm. Output dimensions vary based on where localizations fell. Use this for cropping to regions of interest or when camera info is unavailable.
 
@@ -242,7 +242,7 @@ config = RenderConfig(colormap=:inferno, zoom=20)
 Convenience interface. All keyword arguments match `RenderConfig` fields exactly. Constructs a `RenderConfig` and forwards to `render(smld, config)`.
 
 **Resolution (choose one):**
-- `zoom::Real` - Renders exact camera FOV with `camera_pixels × zoom` output
+- `zoom::Real` - Renders exact camera FOV with `camera_pixels × zoom` output (a fractional zoom rounds the size up)
 - `pixel_size::Real` - Pixel size in nm, uses data bounds + margin (variable output size)
 - `target::Image2DTarget` - Explicit target specification (advanced)
 

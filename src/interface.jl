@@ -90,7 +90,8 @@ Convenience rendering interface. All keyword arguments match `RenderConfig` fiel
 
 **Resolution (choose one):**
 - `zoom`: Renders exact camera FOV with `camera_pixels × zoom` output.
-  Example: zoom=10 with 128×128 camera → exactly 1280×1280 pixels
+  Example: zoom=10 with 128×128 camera → exactly 1280×1280 pixels. A fractional
+  zoom rounds the size up, extending past the FOV by less than one output pixel.
 - `pixel_size`: Pixel size in nm, uses data bounds + margin (variable output size)
 - `target`: Explicit Image2DTarget (advanced)
 

@@ -127,17 +127,18 @@ end
 
 Create an Image2DTarget for rendering.
 
-When `zoom` is specified with camera data, renders the EXACT camera FOV with
-subdivided pixels (camera_pixels × zoom). When `pixel_size` is specified,
-uses data bounds with margin.
+When `zoom` is specified with camera data, renders the camera FOV with each
+camera pixel subdivided `zoom` times (output pixel = camera pixel / zoom). When
+`pixel_size` is specified, uses data bounds with margin.
 
 # Arguments
 - `smld`: SMLD dataset (must have .emitters field)
 - `pixel_size`: Pixel size in nm (uses data bounds + margin)
-- `zoom`: Zoom factor - renders exact camera FOV with camera_pixels × zoom output.
-  Needs square camera pixels (`ArgumentError` otherwise). With a fractional zoom
-  the output size is rounded and the output pixel is the field over that size,
-  so the image still covers the whole field.
+- `zoom`: Zoom factor. A whole-number zoom renders exactly the camera FOV with
+  camera_pixels × zoom output pixels. A fractional zoom rounds each dimension up,
+  so the image covers the FOV and extends past it by less than one output pixel;
+  the target's ranges give the extent. Needs square camera pixels
+  (`ArgumentError` otherwise).
 - `roi`: Camera pixel ROI as `(x_range, y_range)`. Use `:` for full range.
   Example: `roi=(430:860, 1:256)` or `roi=(430:860, :)` for full y.
   Only used with `zoom` mode.
@@ -148,7 +149,7 @@ Either `pixel_size` or `zoom` must be specified.
 function create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, roi=nothing, margin=0.05)
     @assert pixel_size !== nothing || zoom !== nothing "Must specify either pixel_size or zoom"
 
-    # Mode 1: zoom specified - use EXACT camera FOV (or ROI subset)
+    # Mode 1: zoom specified - use the camera FOV (or ROI subset)
     if zoom !== nothing
         @assert hasfield(typeof(smld), :camera) "zoom requires smld.camera"
 
@@ -176,18 +177,22 @@ function create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, roi=not
         y_min = camera.pixel_edges_y[first(y_range)]
         y_max = camera.pixel_edges_y[last(y_range) + 1]
 
-        # Output dimensions: roi_pixels × zoom, rounded
-        width = max(1, round(Int, length(x_range) * zoom))
-        height = max(1, round(Int, length(y_range) * zoom))
+        # Output pixel: the camera pixel over zoom, taking the camera pixel as the
+        # field's mean spacing, the larger of x and y (Float32 edges far from the
+        # origin round each axis's extent differently).
+        x_ext = Float64(x_max) - Float64(x_min)
+        y_ext = Float64(y_max) - Float64(y_min)
+        pixel_size = max(x_ext / length(x_range), y_ext / length(y_range)) * 1000 / zoom
 
-        # Output pixel size from the field's own extent over those dimensions,
-        # the larger of x and y, so the grid covers the whole field on both axes:
-        # a fractional zoom rounds the dimensions, and Float32 edges far from the
-        # origin round each axis's extent differently. For square camera pixels
-        # and a whole-number zoom this is the camera pixel over zoom, and the
-        # other axis overshoots by at most the square check's tolerance.
-        pixel_size = max((Float64(x_max) - Float64(x_min)) / width,
-                         (Float64(y_max) - Float64(y_min)) / height) * 1000
+        # Each axis gets the whole number of output pixels that covers its field
+        # (ignoring a millionth of a pixel of floating-point excess): exactly
+        # roi_pixels × zoom for a whole-number zoom, while a fractional zoom
+        # extends the last column or row past the field by less than one output
+        # pixel. The target's ranges are the grid's own extent.
+        width = max(1, ceil(Int, x_ext * 1000 / pixel_size - 1e-6))
+        height = max(1, ceil(Int, y_ext * 1000 / pixel_size - 1e-6))
+        x_max = x_min + width * pixel_size / 1000
+        y_max = y_min + height * pixel_size / 1000
 
     # Mode 2: pixel_size specified - use data bounds + margin
     else
