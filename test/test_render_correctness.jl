@@ -360,6 +360,20 @@ end
         # stays out of the image.
         (img_out, _) = render(BasicSMLD([emitter_at(0.15, 0.425)], cam34, 1, 1); zoom=1.5, hist...)
         @test !any(c -> red(c) > 0, img_out)
+        # A zoom just above a whole number is fractional: one camera pixel at
+        # 1.0000005 needs two output pixels, and a localization just inside renders.
+        tiny = BasicSMLD([emitter_at(0.09999999, 0.09999999)], IdealCamera(1, 1, 0.1), 1, 1)
+        t_tiny = create_target_from_smld(tiny; zoom=1.0000005)
+        @test (t_tiny.width, t_tiny.height) == (2, 2)
+        (img_tiny, _) = render(tiny; zoom=1.0000005, hist...)
+        @test count(c -> red(c) > 0, img_tiny) == 1
+        # A whole-number zoom always gives roi_pixels × zoom, even when the stored
+        # spacings round differently (Float32 x edges at 10 mm: 99.6 against 100 nm).
+        tenmm = IdealCamera{Float32}(Float32.(10000 .+ 0.1 .* (0:1)), Float32.(0.1 .* (0:8)))
+        e_10mm = Emitter2DFit{Float32}(10000.05f0, 0.4f0, 1000f0, 10f0, 0.01f0, 0.01f0, 50f0, 2f0)
+        (img_10mm, _) = render(BasicSMLD([e_10mm], tenmm, 1, 1); zoom=256, hist...)
+        @test size(img_10mm) == (2048, 256)
+        @test count(c -> red(c) > 0, img_10mm) == 1
     end
 
     @testset "Tail-only Gaussian intensities normalize to finite colors" begin

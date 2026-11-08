@@ -138,7 +138,9 @@ camera pixel subdivided `zoom` times (output pixel = camera pixel / zoom). When
   camera_pixels × zoom output pixels. A fractional zoom rounds each dimension up,
   so the image covers the FOV and extends past it by less than one output pixel;
   the target's ranges give the extent. Needs square camera pixels
-  (`ArgumentError` otherwise).
+  (`ArgumentError` otherwise); when Float32 edges round the x and y spacings
+  slightly differently, the axis with the smaller spacing extends past its field
+  by the difference.
 - `roi`: Camera pixel ROI as `(x_range, y_range)`. Use `:` for full range.
   Example: `roi=(430:860, 1:256)` or `roi=(430:860, :)` for full y.
   Only used with `zoom` mode.
@@ -177,20 +179,26 @@ function create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, roi=not
         y_min = camera.pixel_edges_y[first(y_range)]
         y_max = camera.pixel_edges_y[last(y_range) + 1]
 
+        # Output dimensions from the camera pixel counts: roi_pixels × zoom, rounded
+        # up when fractional. A product within 1e-9 of a whole number counts as
+        # whole, so floating-point noise in zoom never adds a pixel.
+        nzx = length(x_range) * zoom
+        nzy = length(y_range) * zoom
+        width = max(1, ceil(Int, nzx - 1e-9 * nzx))
+        height = max(1, ceil(Int, nzy - 1e-9 * nzy))
+
         # Output pixel: the camera pixel over zoom, taking the camera pixel as the
         # field's mean spacing, the larger of x and y (Float32 edges far from the
-        # origin round each axis's extent differently).
+        # origin round each axis's extent differently); and never less than an
+        # axis's extent over its pixel count, so the grid always covers the field.
+        # A fractional zoom extends the last column or row past the field by less
+        # than one output pixel; the axis with the smaller stored spacing extends
+        # past it by the spacings' difference. The target's ranges are the grid's
+        # own extent.
         x_ext = Float64(x_max) - Float64(x_min)
         y_ext = Float64(y_max) - Float64(y_min)
-        pixel_size = max(x_ext / length(x_range), y_ext / length(y_range)) * 1000 / zoom
-
-        # Each axis gets the whole number of output pixels that covers its field
-        # (ignoring a millionth of a pixel of floating-point excess): exactly
-        # roi_pixels × zoom for a whole-number zoom, while a fractional zoom
-        # extends the last column or row past the field by less than one output
-        # pixel. The target's ranges are the grid's own extent.
-        width = max(1, ceil(Int, x_ext * 1000 / pixel_size - 1e-6))
-        height = max(1, ceil(Int, y_ext * 1000 / pixel_size - 1e-6))
+        pixel_size = max(max(x_ext / length(x_range), y_ext / length(y_range)) / zoom,
+                         x_ext / width, y_ext / height) * 1000
         x_max = x_min + width * pixel_size / 1000
         y_max = y_min + height * pixel_size / 1000
 
