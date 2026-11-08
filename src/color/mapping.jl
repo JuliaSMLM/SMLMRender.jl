@@ -110,9 +110,11 @@ function apply_intensity_colormap(intensity::Matrix{Float64}, mapping::Intensity
             result[i] = fill_color
         end
     else
-        scale = 1.0 / (max_val - min_val)
+        # Divide rather than multiply by the reciprocal: a positive range below
+        # floatmin (tail-only Gaussian intensities) has an infinite reciprocal
+        span = max_val - min_val
         @inbounds for i in eachindex(intensity)
-            normalized = (min(intensity[i], clip_val) - min_val) * scale
+            normalized = (min(intensity[i], clip_val) - min_val) / span
             result[i] = colormap_lookup(lut, normalized)
         end
     end

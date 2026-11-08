@@ -135,7 +135,9 @@ uses data bounds with margin.
 - `smld`: SMLD dataset (must have .emitters field)
 - `pixel_size`: Pixel size in nm (uses data bounds + margin)
 - `zoom`: Zoom factor - renders exact camera FOV with camera_pixels × zoom output.
-  Needs square camera pixels (`ArgumentError` otherwise).
+  Needs square camera pixels (`ArgumentError` otherwise). With a fractional zoom
+  the output size is rounded and the output pixel is the field over that size,
+  so the image still covers the whole field.
 - `roi`: Camera pixel ROI as `(x_range, y_range)`. Use `:` for full range.
   Example: `roi=(430:860, 1:256)` or `roi=(430:860, :)` for full y.
   Only used with `zoom` mode.
@@ -174,14 +176,18 @@ function create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, roi=not
         y_min = camera.pixel_edges_y[first(y_range)]
         y_max = camera.pixel_edges_y[last(y_range) + 1]
 
-        # Output pixel size from the ROI's own extent, so the output grid spans
-        # exactly its camera pixels. (A single spacing carries the rounding of
-        # Float32 edges far from the origin into every output pixel.)
-        pixel_size = (Float64(x_max) - Float64(x_min)) * 1000 / length(x_range) / zoom
+        # Output dimensions: roi_pixels × zoom, rounded
+        width = max(1, round(Int, length(x_range) * zoom))
+        height = max(1, round(Int, length(y_range) * zoom))
 
-        # Output dimensions: roi_pixels × zoom
-        width = round(Int, length(x_range) * zoom)
-        height = round(Int, length(y_range) * zoom)
+        # Output pixel size from the field's own extent over those dimensions,
+        # the larger of x and y, so the grid covers the whole field on both axes:
+        # a fractional zoom rounds the dimensions, and Float32 edges far from the
+        # origin round each axis's extent differently. For square camera pixels
+        # and a whole-number zoom this is the camera pixel over zoom, and the
+        # other axis overshoots by at most the square check's tolerance.
+        pixel_size = max((Float64(x_max) - Float64(x_min)) / width,
+                         (Float64(y_max) - Float64(y_min)) / height) * 1000
 
     # Mode 2: pixel_size specified - use data bounds + margin
     else
@@ -358,10 +364,12 @@ function normalize_to_01(img::Matrix{T}) where T<:Real
         return fill(iszero(max_val) ? zero(T) : T(0.5), size(img))
     end
 
-    scale = one(T) / (max_val - min_val)
+    # Divide rather than multiply by the reciprocal: a positive range below
+    # floatmin (tail-only Gaussian intensities) has an infinite reciprocal
+    span = max_val - min_val
     result = similar(img)
     @inbounds for i in eachindex(img)
-        result[i] = (img[i] - min_val) * scale
+        result[i] = (img[i] - min_val) / span
     end
     return result
 end

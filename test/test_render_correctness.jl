@@ -313,11 +313,16 @@ end
         e_far = Emitter2DFit{Float32}(1000.25f0, 0.35f0, 1000f0, 10f0, 0.01f0, 0.01f0, 50f0, 2f0)
         (img_far, _) = render(BasicSMLD([e_far], far, 1, 1); zoom=10)
         @test size(img_far) == (80, 160)
-        # The output grid spans the camera's own extent (its first spacing would
-        # cut 0.37 nm off the far edge), so a localization just inside it renders.
+        # The output grid covers the camera's own extent on both axes, overshooting
+        # by no more than rounding (the first x spacing would cut 0.37 nm off the
+        # far x edge), so a localization just inside it renders.
         t_far = create_target_from_smld(BasicSMLD([e_far], far, 1, 1); zoom=10)
-        @test t_far.width * t_far.pixel_size / 1000 ≈
-              Float64(far.pixel_edges_x[end]) - Float64(far.pixel_edges_x[1])
+        x_ext = Float64(far.pixel_edges_x[end]) - Float64(far.pixel_edges_x[1])
+        y_ext = Float64(far.pixel_edges_y[end]) - Float64(far.pixel_edges_y[1])
+        cover_x = t_far.width * t_far.pixel_size / 1000 / x_ext
+        cover_y = t_far.height * t_far.pixel_size / 1000 / y_ext
+        @test min(cover_x, cover_y) >= 1 - 1e-12
+        @test max(cover_x, cover_y) < 1 + 1e-4
         e_edge = Emitter2DFit{Float32}(1001.5999f0, 0.35f0, 1000f0, 10f0, 0.01f0, 0.01f0, 50f0, 2f0)
         (img_edge, _) = render(BasicSMLD([e_edge], far, 1, 1); zoom=10,
                                strategy=HistogramRender(), color=:white)
@@ -330,5 +335,35 @@ end
         # ...while pixels 0.1% apart are still refused.
         @test_throws ArgumentError render(BasicSMLD([emitter_at(0.25, 0.25)],
                                                     IdealCamera(16, 8, (0.1, 0.1001)), 1, 1); zoom=10)
+        # Both axes are covered: y of the one-pixel camera rounds differently from
+        # x, and so does an ROI of the far camera.
+        e_top = Emitter2DFit{Float32}(1000.05f0, 0.7999f0, 1000f0, 10f0, 0.01f0, 0.01f0, 50f0, 2f0)
+        hist = (strategy=HistogramRender(), color=:white)
+        (img_top, _) = render(BasicSMLD([e_top], one_px, 1, 1); zoom=10, hist...)
+        @test count(c -> red(c) > 0, img_top) == 1
+        (img_roi, _) = render(BasicSMLD([e_top], far, 1, 1); zoom=10, roi=(1:1, :), hist...)
+        @test size(img_roi) == (80, 10)
+        @test count(c -> red(c) > 0, img_roi) == 1
+        # A fractional zoom rounds the output size (4.5 -> 4); the grid still covers
+        # the whole 300 nm field.
+        three = BasicSMLD([emitter_at(0.29, 0.29)], IdealCamera(3, 3, 0.1), 1, 1)
+        t3 = create_target_from_smld(three; zoom=1.5)
+        @test (t3.width, t3.height) == (4, 4)
+        @test t3.width * t3.pixel_size ≈ 300.0
+        (img3, _) = render(three; zoom=1.5, hist...)
+        @test count(c -> red(c) > 0, img3) == 1
+    end
+
+    @testset "Tail-only Gaussian intensities normalize to finite colors" begin
+        # Every pixel lies 38 to 48 sigma out in y, so the intensities are
+        # subnormal and the reciprocal of their range overflows.
+        e = Emitter2DFit{Float64}(0.005, 0.0, 1000.0, 10.0, 0.1, 0.001, 50.0, 2.0; id=1)
+        smld = BasicSMLD([e], IdealCamera(4, 4, 0.1), 1, 1)
+        target = Image2DTarget(10, 10, 1.0, (0.0, 0.01), (-0.048, -0.038))
+        finite(c) = isfinite(red(c)) && isfinite(green(c)) && isfinite(blue(c))
+        for kw in ((color_by=:photons,), (color_by=:id, categorical=true), (colormap=:inferno,))
+            (img, _) = render(smld, target, RenderConfig(; kw...))
+            @test all(finite, img)
+        end
     end
 end

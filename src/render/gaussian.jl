@@ -421,7 +421,17 @@ end
 # 1/(σ_{x|y}√(2π))), cannot beat the best pixel found. The search runs along the
 # axis with the smaller conditional slope, so |β| ≤ |ρ| < 1 and each row has at
 # most four candidates.
+#
+# The argument is exact for the exact masses (the bivariate-CDF path, |ρ| ≥ 0.01).
+# On the first-order path (|ρ| < 0.01) the masses are the expansion's: the search
+# still contains the exact masses' brightest pixel, so the peak it returns is
+# within twice the expansion's error at the peak of the expansion's own maximum:
+# of order ρ², at most about 2e-4 of the peak. That holds because the window
+# always contains the center, as every kernel window does (asserted); far out in
+# the tails, where the expansion's relative error grows, the search is never
+# asked for a peak.
 function _window_peak(x0, y0, sx, sy, ρ, i_lo::Int, i_hi::Int, j_lo::Int, j_hi::Int)
+    @assert j_lo <= x0 <= j_hi && i_lo <= y0 <= i_hi "the window must contain the center"
     rows = sx <= sy   # |ρ·sx/sy| ≤ |ρ·sy/sx|: walk rows, candidates along x
     u0, v0, su, sv = rows ? (x0, y0, sx, sy) : (y0, x0, sy, sx)
     u_lo, u_hi, v_lo, v_hi = rows ? (j_lo, j_hi, i_lo, i_hi) : (i_lo, i_hi, j_lo, j_hi)
@@ -472,22 +482,29 @@ end
 # Call f(i, j, w) for the in-image pixels (rows i_lo:i_lo+n_rows-1, columns
 # j_lo:j_lo+n_cols-1). When `peak` (normalization = :maximum) every value is
 # divided by the brightest pixel: the window's, from the ridge search, or an
-# in-image pixel's if rounding puts it a hair higher, so no pixel exceeds 1.
+# in-image pixel's if it is higher (rounding, or the first-order path's
+# approximation), so no pixel exceeds 1 and the brightest in-image pixel of a
+# localization whose peak is in the image is exactly 1.
 @inline function _emit_blob(f::F, pixel_mass::P, i_lo::Int, j_lo::Int, n_rows::Int, n_cols::Int,
                             peak::Bool, window_peak::Float64) where {F, P}
-    scale = 1.0
     if peak
         m = window_peak
         for c in 1:n_cols, r in 1:n_rows
             m = max(m, pixel_mass(r, c))
         end
         m > 0 || return nothing
-        scale = 1.0 / m
-    end
-    for c in 1:n_cols
-        j = j_lo + c - 1
-        for r in 1:n_rows
-            f(i_lo + r - 1, j, scale * pixel_mass(r, c))
+        for c in 1:n_cols
+            j = j_lo + c - 1
+            for r in 1:n_rows
+                f(i_lo + r - 1, j, pixel_mass(r, c) / m)
+            end
+        end
+    else
+        for c in 1:n_cols
+            j = j_lo + c - 1
+            for r in 1:n_rows
+                f(i_lo + r - 1, j, pixel_mass(r, c))
+            end
         end
     end
     return nothing
