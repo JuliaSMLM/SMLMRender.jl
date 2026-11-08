@@ -225,7 +225,7 @@ end
             @test map(red, cut) ≈ map(red, full[34:61, :]) ./ maximum(red, full)
         end
         # Cost: a wide correlated blob on a tiny frame evaluates only its in-image
-        # pixels (bb013e4 built the whole window's 1202 × 1202 corner grid, 11.6 MB).
+        # pixels (a whole-window peak search built a 1202 × 1202 corner grid, 11.6 MB).
         e = Emitter2DFit{Float64}(0.005, 0.005, 1000.0, 10.0, 0.2, 0.2, 50.0, 2.0; σ_xy=0.3 * 0.2 * 0.2)
         smld = BasicSMLD([e], IdealCamera(4, 4, 0.1), 1, 1)
         tiny = Image2DTarget(10, 10, 1.0, (0.0, 0.01), (0.0, 0.01))

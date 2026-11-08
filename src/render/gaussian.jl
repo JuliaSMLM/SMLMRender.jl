@@ -302,9 +302,9 @@ end
 # first order in ρ: P = ΔΦx·ΔΦy + ρ·Δφx·Δφy (Δ = difference across the pixel's
 # standardized edges; ∂Φ₂/∂ρ = φ₂). The next term, (ρ²/2)·Δ(hφ(h))·Δ(kφ(k)), is
 # at most 0.12ρ², so the error stays under 1.2e-5 of the localization's mass per
-# pixel. Fitted σ_xy is small but almost never exactly zero (SeqSR lab data:
-# median |ρ| 1e-3, 99th percentile 0.01), so this keeps fitted data on the fast
-# path; stronger correlations use the exact bivariate normal CDF.
+# pixel. Fitted σ_xy is small but almost never exactly zero, so this keeps
+# typical fitted data on the fast path; stronger correlations use the exact
+# bivariate normal CDF.
 const _RHO_FIRST_ORDER = 0.01
 
 """
