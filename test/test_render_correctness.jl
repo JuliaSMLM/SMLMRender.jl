@@ -360,13 +360,28 @@ end
         # stays out of the image.
         (img_out, _) = render(BasicSMLD([emitter_at(0.15, 0.425)], cam34, 1, 1); zoom=1.5, hist...)
         @test !any(c -> red(c) > 0, img_out)
-        # A zoom just above a whole number is fractional: one camera pixel at
-        # 1.0000005 needs two output pixels, and a localization just inside renders.
+        # Near a whole number: a product within a millionth counts as whole (the
+        # output pixel grows to cover the field), a larger fraction rounds up;
+        # either way a localization just inside the field renders.
         tiny = BasicSMLD([emitter_at(0.09999999, 0.09999999)], IdealCamera(1, 1, 0.1), 1, 1)
-        t_tiny = create_target_from_smld(tiny; zoom=1.0000005)
-        @test (t_tiny.width, t_tiny.height) == (2, 2)
-        (img_tiny, _) = render(tiny; zoom=1.0000005, hist...)
-        @test count(c -> red(c) > 0, img_tiny) == 1
+        for (z, n) in ((1.0000005, 1), (1.00001, 2))
+            t_tiny = create_target_from_smld(tiny; zoom=z)
+            @test (t_tiny.width, t_tiny.height) == (n, n)
+            @test t_tiny.width * t_tiny.pixel_size >= 100.0
+            (img_tiny, _) = render(tiny; zoom=z, hist...)
+            @test count(c -> red(c) > 0, img_tiny) == 1
+        end
+        # Whole products stay whole at any size (target only, no image).
+        @test create_target_from_smld(tiny; zoom=1_000_000_000).width == 1_000_000_000
+        # A Float32 zoom gives one grid through every entry point.
+        ten = BasicSMLD([emitter_at(0.55, 0.55)], IdealCamera(10, 10, 0.1), 1, 1)
+        t_f32 = create_target_from_smld(ten; zoom=1.1f0)
+        (img_f32, info_f32) = render(ten; zoom=1.1f0, hist...)
+        (img_ov, info_ov) = render([ten]; colors=[:white], zoom=1.1f0, strategy=HistogramRender())
+        @test (t_f32.width, t_f32.height) == (11, 11)
+        @test size(img_f32) == size(img_ov) == (11, 11)
+        @test info_f32.pixel_size_nm ≈ t_f32.pixel_size
+        @test info_ov.pixel_size_nm ≈ t_f32.pixel_size
         # A whole-number zoom always gives roi_pixels × zoom, even when the stored
         # spacings round differently (Float32 x edges at 10 mm: 99.6 against 100 nm).
         tenmm = IdealCamera{Float32}(Float32.(10000 .+ 0.1 .* (0:1)), Float32.(0.1 .* (0:8)))
