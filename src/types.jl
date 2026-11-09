@@ -38,13 +38,20 @@ struct HistogramRender <: Render2DStrategy end
     GaussianRender <: Render2DStrategy
 
 Renders each localization as a 2D Gaussian blob. Provides smooth,
-publication-quality images with sub-pixel accuracy.
+publication-quality images with sub-pixel accuracy. Each pixel holds the
+Gaussian integrated over that pixel (not sampled at its center). Under
+`normalization = :integral` (the default), each localization adds the same total
+intensity wherever it falls inside a pixel, even when its sigma is a fraction of
+a pixel, before the image's contrast scaling.
 
 # Fields
 - `n_sigmas::Float64`: How many standard deviations to render (default: 3.0)
 - `use_localization_precision::Bool`: Use σ_x, σ_y from data or fixed sigma
 - `fixed_sigma::Union{Float64, Nothing}`: Fixed sigma in nm (if not using precision)
-- `normalization::Symbol`: `:integral` (sum to 1) or `:maximum` (peak to 1)
+- `normalization::Symbol`: `:integral` (each localization sums to 1, apart from
+  the mass beyond `n_sigmas`) or `:maximum` (each localization's brightest pixel
+  is 1, wherever it falls and whatever its sigma; its total then depends on where
+  it falls in a pixel, by up to about 26% at a 1-pixel sigma)
 
 # Examples
 ```julia
@@ -127,8 +134,9 @@ CircleRender(; radius_factor=1.0, line_width=1.0,
 """
     EllipseRender <: Render2DStrategy
 
-Renders each localization as an ellipse outline. Uses separate σ_x, σ_y
-for axis radii, and σ_xy (covariance) for rotation when available.
+Renders each localization as the outline of its covariance ellipse: semi-axes
+`radius_factor·sqrt(λ)` for the eigenvalues λ of `[σ_x² σ_xy; σ_xy σ_y²]`,
+oriented along the eigenvectors. With fixed radii, an axis-aligned ellipse.
 
 # Fields
 - `radius_factor::Float64`: Multiply sigma by this (1.0=1σ, 2.0=2σ)

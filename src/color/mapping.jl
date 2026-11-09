@@ -110,9 +110,11 @@ function apply_intensity_colormap(intensity::Matrix{Float64}, mapping::Intensity
             result[i] = fill_color
         end
     else
-        scale = 1.0 / (max_val - min_val)
+        # Divide rather than multiply by the reciprocal: a positive range below
+        # floatmin (tail-only Gaussian intensities) has an infinite reciprocal
+        span = max_val - min_val
         @inbounds for i in eachindex(intensity)
-            normalized = (min(intensity[i], clip_val) - min_val) * scale
+            normalized = (min(intensity[i], clip_val) - min_val) / span
             result[i] = colormap_lookup(lut, normalized)
         end
     end
@@ -409,31 +411,38 @@ approach as the intensity rendering path.
 3. Average color: RGB = (r_num/S, g_num/S, b_num/S) where S = original intensity
 4. Final: RGB * normalized_brightness
 
+With `clip_percentile = nothing` (saturate mode) steps 1-2 are skipped and the
+brightness is the raw accumulated intensity, which can exceed 1, as in the
+histogram field and categorical paths.
+
 # Arguments
 - `intensity`: Total accumulated intensity (overlap count)
 - `r_num`, `g_num`, `b_num`: Color numerators weighted by intensity
-- `clip_percentile`: Percentile of non-zero pixels for clipping (default 0.99)
+- `clip_percentile`: Percentile of non-zero pixels for clipping (default 0.99), or `nothing`
 """
 function apply_intensity_weighted_color(intensity::Matrix{Float64},
                                        r_num::Matrix{Float64},
                                        g_num::Matrix{Float64},
                                        b_num::Matrix{Float64};
-                                       clip_percentile::Float64 = 0.99)
+                                       clip_percentile::Union{Float64, Nothing} = 0.99)
     height, width = size(intensity)
     result = zeros(RGB{Float64}, height, width)
 
     # Clip and normalize intensity (same as intensity rendering path)
-    intensity_norm = copy(intensity)
-    clip_at_percentile(intensity_norm, clip_percentile)
-    intensity_norm = normalize_to_01(intensity_norm)
-
-    # Small epsilon to avoid division by zero
-    ε = 1e-6
+    if clip_percentile === nothing
+        intensity_norm = intensity
+    else
+        intensity_norm = copy(intensity)
+        clip_at_percentile(intensity_norm, clip_percentile)
+        intensity_norm = normalize_to_01(intensity_norm)
+    end
 
     for i in 1:height, j in 1:width
         S = intensity[i, j]
 
-        if S > ε
+        # Any pixel with intensity gets its color: a fixed threshold would drop
+        # real mass wherever a Gaussian spreads over many small pixels
+        if S > 0
             # Compute average color (from original, unclipped intensity)
             r_avg = r_num[i, j] / S
             g_avg = g_num[i, j] / S
@@ -447,7 +456,7 @@ function apply_intensity_weighted_color(intensity::Matrix{Float64},
                              g_avg * brightness,
                              b_avg * brightness)
         end
-        # else: pixel stays black (S ≈ 0)
+        # else: pixel stays black (no intensity)
     end
 
     return result

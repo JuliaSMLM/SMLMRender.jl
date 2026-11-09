@@ -90,7 +90,8 @@ Convenience rendering interface. All keyword arguments match `RenderConfig` fiel
 
 **Resolution (choose one):**
 - `zoom`: Renders exact camera FOV with `camera_pixels × zoom` output.
-  Example: zoom=10 with 128×128 camera → exactly 1280×1280 pixels
+  Example: zoom=10 with 128×128 camera → exactly 1280×1280 pixels. A fractional
+  zoom rounds the size up, extending past the FOV by less than one output pixel.
 - `pixel_size`: Pixel size in nm, uses data bounds + margin (variable output size)
 - `target`: Explicit Image2DTarget (advanced)
 
@@ -169,7 +170,10 @@ end
 """
     render(smld, x_edges, y_edges; kwargs...)
 
-Render with explicit pixel edges.
+Render with explicit pixel edges (μm, uniform and increasing). The output pixels
+are square: the edges' mean x and y spacings must agree (to 1e-4 plus the
+rounding of the stored edges; `ArgumentError` otherwise), and the larger is the
+output pixel, so the image covers every edge range.
 """
 function render(smld, x_edges::AbstractVector, y_edges::AbstractVector;
                 strategy::RenderingStrategy = GaussianRender(),
@@ -183,16 +187,22 @@ function render(smld, x_edges::AbstractVector, y_edges::AbstractVector;
                 backend::Symbol = :cpu,
                 filename::Union{String, Nothing} = nothing)
 
-    # Create target from edges
+    # Create target from edges: one square pixel, from the mean spacings (a single
+    # spacing carries the rounding of Float32 edges far from the origin), the
+    # larger of x and y so the grid covers both; the ranges are the grid's extent.
+    (length(x_edges) >= 2 && length(y_edges) >= 2) ||
+        throw(ArgumentError("x_edges and y_edges need at least two edges each"))
     width = length(x_edges) - 1
     height = length(y_edges) - 1
-    pixel_size_x = (x_edges[2] - x_edges[1]) * 1000  # μm to nm
-    pixel_size_y = (y_edges[2] - y_edges[1]) * 1000
-    @assert pixel_size_x ≈ pixel_size_y "Non-square pixels not yet supported"
-
-    x_range = (x_edges[1], x_edges[end])
-    y_range = (y_edges[1], y_edges[end])
-    target = Image2DTarget(width, height, pixel_size_x, x_range, y_range)
+    dx, dy, square = _mean_spacings(x_edges, y_edges)
+    square || throw(ArgumentError("explicit edges need square pixels, but their mean " *
+                                  "spacings are $(dx) nm in x and $(dy) nm in y"))
+    pixel_size = max(dx, dy)
+    x_min = Float64(x_edges[1])
+    y_min = Float64(y_edges[1])
+    target = Image2DTarget(width, height, pixel_size,
+                           (x_min, x_min + width * pixel_size / 1000),
+                           (y_min, y_min + height * pixel_size / 1000))
 
     return render(smld; target=target, strategy=strategy, colormap=colormap,
                  color_by=color_by, color=color, categorical=categorical,
@@ -206,8 +216,12 @@ end
 
 Render multiple datasets with different colors and overlay them.
 
-Each dataset is normalized independently, then combined additively.
-Oversaturated regions clip to white.
+Each dataset is rendered as its own single-color image (clipped at
+`clip_percentile` and scaled to full brightness, or raw with
+`clip_percentile=nothing`), optionally divided by its own maximum
+(`normalize_each`), then combined additively. Oversaturated regions clip to
+white. In `pixel_size` mode the frame covers every channel's localizations; in
+`zoom` mode it is the first channel's camera field of view.
 
 # Arguments
 - `smlds`: Vector of SMLD datasets
@@ -242,13 +256,22 @@ function render_overlay(smlds::Vector, colors::Vector;
     # Convert color symbols to RGB if needed
     rgb_colors = [c isa Symbol ? parse(Colorant, string(c)) : c for c in colors]
 
-    # Create common target if not provided
+    # Create common target if not provided. Zoom mode covers the shared camera's
+    # FOV; pixel_size mode covers the combined extent of every channel, so no
+    # channel's localizations fall outside the frame.
     if target === nothing
         @assert pixel_size !== nothing || zoom !== nothing "Must specify pixel_size, zoom, or target"
-        target = create_target_from_smld(smlds[1]; pixel_size=pixel_size, zoom=zoom)
+        if zoom !== nothing
+            target = create_target_from_smld(smlds[1]; zoom=zoom)
+        else
+            all_emitters = reduce(vcat, (s.emitters for s in smlds))
+            target = create_target_from_smld((emitters = all_emitters,); pixel_size=pixel_size)
+        end
     end
 
-    # Render each dataset with manual color
+    # Render each dataset with manual color. Each channel is exactly its own
+    # single-color render: clipped at clip_percentile and normalized, or raw in
+    # saturate mode (clip_percentile = nothing).
     images = []
     total_emitters = 0
     t_start = time()
@@ -258,16 +281,6 @@ function render_overlay(smlds::Vector, colors::Vector;
         (img, info) = _render_dispatch(smld, target, config)
         push!(images, img)
         total_emitters += info.n_emitters_rendered
-    end
-
-    # Apply per-channel percentile clipping before normalization
-    # This matches single-channel IntensityColorMapping behavior where clip_at_percentile
-    # is applied before normalize_to_01. Without this, overlay channels get max-normalized
-    # which loses contrast compared to single-channel renders.
-    if clip_percentile !== nothing && !(strategy isa CircleRender || strategy isa EllipseRender)
-        for i in eachindex(images)
-            images[i] = _clip_rgb_channels(images[i], clip_percentile)
-        end
     end
 
     # Normalize each independently if requested
@@ -517,7 +530,7 @@ function _render_dispatch(smld, target::Image2DTarget, config::RenderConfig)
                               clip_percentile=config.clip_percentile)
     elseif strategy isa GaussianRender
         img = render_gaussian(smld, target, strategy, color_mapping;
-                             clip_percentile=something(config.clip_percentile, 0.99))
+                             clip_percentile=config.clip_percentile)
     elseif strategy isa CircleRender
         img = render_circle(smld, target, strategy, color_mapping)
     elseif strategy isa EllipseRender
@@ -542,36 +555,6 @@ function _render_dispatch(smld, target::Image2DTarget, config::RenderConfig)
     )
 
     return (img, info)
-end
-
-"""
-    _clip_rgb_channels(img::Matrix{RGB{Float64}}, percentile::Real)
-
-Apply percentile clipping to each non-zero RGB channel independently.
-Extracts R/G/B as separate matrices, clips each via `clip_at_percentile`,
-and reassembles. Channels that are all zero are left unchanged.
-"""
-function _clip_rgb_channels(img::Matrix{RGB{Float64}}, percentile::Real)
-    # Extract channels into pre-allocated matrices (one at a time would save
-    # peak memory, but we need all three to reassemble)
-    r = Matrix{Float64}(undef, size(img))
-    g = Matrix{Float64}(undef, size(img))
-    b = Matrix{Float64}(undef, size(img))
-    @inbounds for i in eachindex(img)
-        r[i] = img[i].r
-        g[i] = img[i].g
-        b[i] = img[i].b
-    end
-
-    any(x -> x > 0, r) && clip_at_percentile(r, percentile)
-    any(x -> x > 0, g) && clip_at_percentile(g, percentile)
-    any(x -> x > 0, b) && clip_at_percentile(b, percentile)
-
-    result = Matrix{RGB{Float64}}(undef, size(img))
-    @inbounds for i in eachindex(r)
-        result[i] = RGB{Float64}(r[i], g[i], b[i])
-    end
-    return result
 end
 
 """

@@ -29,7 +29,7 @@ SMLMRender converts localization data into publication-quality images through a 
 
 ### Resolution Modes
 
-**Zoom Mode:** Renders the exact camera field-of-view (FOV) with subdivided pixels. A 128×128 pixel camera with `zoom=10` produces exactly 1280×1280 output pixels covering the same physical region. Output range precisely matches camera FOV. Use this for faithful camera FOV representation.
+**Zoom Mode:** Renders the exact camera field-of-view (FOV) with subdivided pixels. A 128×128 pixel camera with `zoom=10` produces exactly 1280×1280 output pixels covering the same physical region. Output range precisely matches camera FOV for a whole-number zoom; a fractional zoom rounds the size up, so the image extends past the FOV by less than one output pixel (the target's ranges give the extent). Use this for faithful camera FOV representation.
 
 **Pixel Size Mode:** Uses data bounds (min/max of localization coordinates) plus a margin, with specified pixel size in nm. Output dimensions vary based on where localizations fell. Use this for cropping to regions of interest or when camera info is unavailable.
 
@@ -41,11 +41,11 @@ Physical coordinates are in micrometers (μm). Pixel sizes are in nanometers (nm
 
 **HistogramRender:** Fast binning - counts localizations per pixel. No sub-pixel accuracy. Best for quick previews or very dense data.
 
-**GaussianRender:** Renders each localization as a 2D Gaussian blob. Provides smooth, publication-quality images with sub-pixel accuracy. Can use localization precision (σ_x, σ_y fields) or fixed sigma.
+**GaussianRender:** Renders each localization as a 2D Gaussian blob. Provides smooth, publication-quality images with sub-pixel accuracy. Can use localization precision (σ_x, σ_y, σ_xy fields) or fixed sigma. Each pixel holds the Gaussian integrated over that pixel. Under `normalization=:integral` (the default), each localization adds the same total intensity wherever it falls inside a pixel, even for sigmas well below a pixel, before the image's contrast scaling. Under `:maximum`, its brightest pixel is 1 and its total depends on where it falls in a pixel.
 
 **CircleRender:** Renders localization as circle outline. Useful for visualizing localization precision when σ represents uncertainty radius. Circle radius can be multiple of σ.
 
-**EllipseRender:** Renders localization as ellipse outline using separate σ_x, σ_y for axis radii. Uses σ_xy covariance for rotation when available. Useful for visualizing anisotropic localization precision.
+**EllipseRender:** Renders localization as the outline of its covariance ellipse: semi-axes `radius_factor·sqrt(λ)` for the eigenvalues λ of `[σ_x² σ_xy; σ_xy σ_y²]`, oriented along the eigenvectors. Useful for visualizing anisotropic localization precision.
 
 ### Color Mapping Strategies
 
@@ -242,7 +242,7 @@ config = RenderConfig(colormap=:inferno, zoom=20)
 Convenience interface. All keyword arguments match `RenderConfig` fields exactly. Constructs a `RenderConfig` and forwards to `render(smld, config)`.
 
 **Resolution (choose one):**
-- `zoom::Real` - Renders exact camera FOV with `camera_pixels × zoom` output
+- `zoom::Real` - Renders exact camera FOV with `camera_pixels × zoom` output (a fractional zoom rounds the size up)
 - `pixel_size::Real` - Pixel size in nm, uses data bounds + margin (variable output size)
 - `target::Image2DTarget` - Explicit target specification (advanced)
 
@@ -269,7 +269,7 @@ Convenience interface. All keyword arguments match `RenderConfig` fields exactly
 
 #### `render(smld, x_edges, y_edges; kwargs...) -> (Matrix{RGB{Float64}}, RenderInfo)`
 
-Render with explicit pixel edges (advanced usage).
+Render with explicit pixel edges (advanced usage). Output pixels are square: the edges' mean x and y spacings must agree (to 1e-4 plus the edges' own rounding; `ArgumentError` otherwise), and the larger is the output pixel, so the image covers both edge ranges.
 
 **Arguments:**
 - `smld` - SMLD dataset
@@ -284,8 +284,9 @@ Multi-channel rendering via dispatch on `Vector`.
 **Arguments:**
 - `smlds::Vector` - Vector of SMLD datasets
 - `colors::Vector` - Vector of colors (RGB, Symbol like `:red`, or String like `"green"`)
-- `normalize_each::Bool` - Normalize each channel independently (default: `true`)
-- `clip_percentile::Union{Real, Nothing}` - Per-channel intensity clipping (default: `nothing` = saturate mode). Use `nothing` for classic two-color overlays where each localization gets full brightness and dense regions saturate to white.
+- `clip_percentile::Union{Real, Nothing}` - Per-channel intensity clipping (default: `0.99`): each channel is its own single-color render, clipped at this percentile of its non-zero pixels and scaled so the clip value is full brightness. `nothing` (saturate mode) keeps each channel's raw accumulated intensity.
+- `normalize_each::Bool` - Divide each channel by its own maximum (default: `true`). With a clip percentile the channels are already scaled, so this only brightens a color whose largest component is below 1 (CSS `:green` is `(0, 0.5, 0)`). With `clip_percentile=nothing`, `true` scales each raw channel to its maximum; `false` keeps the raw values, so dense regions saturate to white (the classic two-color overlay).
+- In `pixel_size` mode the shared frame covers the combined extent of all channels; in `zoom` mode it is the camera field of view.
 - All other kwargs same as single-channel render
 
 **Returns:** `(image, info)` tuple with overlaid channels image and combined RenderInfo

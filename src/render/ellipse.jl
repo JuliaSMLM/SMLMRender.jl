@@ -8,8 +8,9 @@ using Colors
 
 Render SMLD data as ellipse outlines.
 
-Each localization is rendered as an ellipse outline using σ_x, σ_y for radii
-and σ_xy (covariance) for rotation when available.
+Each localization is rendered as the outline of its covariance ellipse: semi-axes
+`radius_factor·sqrt(λ)` for the eigenvalues λ of `[σ_x² σ_xy; σ_xy σ_y²]`,
+oriented along the eigenvectors (see [`get_ellipse_params`](@ref)).
 
 # Arguments
 - `smld`: SMLD dataset with .emitters field
@@ -60,8 +61,10 @@ function render_ellipse_field(smld, target::Image2DTarget,
         # Get ellipse parameters (radii and rotation)
         radius_x_nm, radius_y_nm, θ = get_ellipse_params(emitter, strategy)
 
-        if radius_x_nm < 0.1 || radius_x_nm > 10000.0 ||
-           radius_y_nm < 0.1 || radius_y_nm > 10000.0
+        # Skip only invisible (major axis under 0.1 nm) or absurd ellipses; a
+        # near-degenerate covariance draws as a line along its major axis.
+        major_nm = max(radius_x_nm, radius_y_nm)
+        if major_nm < 0.1 || major_nm > 10000.0
             continue
         end
 
@@ -90,8 +93,10 @@ function render_ellipse_manual(smld, target::Image2DTarget,
     for emitter in smld.emitters
         radius_x_nm, radius_y_nm, θ = get_ellipse_params(emitter, strategy)
 
-        if radius_x_nm < 0.1 || radius_x_nm > 10000.0 ||
-           radius_y_nm < 0.1 || radius_y_nm > 10000.0
+        # Skip only invisible (major axis under 0.1 nm) or absurd ellipses; a
+        # near-degenerate covariance draws as a line along its major axis.
+        major_nm = max(radius_x_nm, radius_y_nm)
+        if major_nm < 0.1 || major_nm > 10000.0
             continue
         end
 
@@ -118,8 +123,10 @@ function render_ellipse_categorical(smld, target::Image2DTarget,
     for emitter in smld.emitters
         radius_x_nm, radius_y_nm, θ = get_ellipse_params(emitter, strategy)
 
-        if radius_x_nm < 0.1 || radius_x_nm > 10000.0 ||
-           radius_y_nm < 0.1 || radius_y_nm > 10000.0
+        # Skip only invisible (major axis under 0.1 nm) or absurd ellipses; a
+        # near-degenerate covariance draws as a line along its major axis.
+        major_nm = max(radius_x_nm, radius_y_nm)
+        if major_nm < 0.1 || major_nm > 10000.0
             continue
         end
 
@@ -139,28 +146,34 @@ end
 
 Get ellipse parameters for an emitter based on strategy settings.
 
-Returns (radius_x_nm, radius_y_nm, rotation_angle) where rotation is in radians.
-Rotation is computed from σ_xy covariance if available.
+Returns (radius_x_nm, radius_y_nm, rotation_angle) where rotation is in radians:
+the ellipse's first semi-axis `radius_x_nm` lies along angle θ from +x and the
+second, `radius_y_nm`, perpendicular to it.
+
+With localization precision, the outline is the covariance ellipse
+`p' Σ⁻¹ p = radius_factor²` of `Σ = [σ_x² σ_xy; σ_xy σ_y²]`: the semi-axes are
+`radius_factor·sqrt(λ)` for the eigenvalues λ of Σ and θ is the direction of the
+larger eigenvalue's eigenvector. A covariance that is not positive definite
+falls back to the axis-aligned ellipse of σ_x, σ_y, as the Gaussian render does.
 """
 function get_ellipse_params(emitter, strategy::EllipseRender)
     if strategy.use_localization_precision
-        # Get σ_x, σ_y in μm, convert to nm
-        radius_x_nm = emitter.σ_x * strategy.radius_factor * 1000.0
-        radius_y_nm = emitter.σ_y * strategy.radius_factor * 1000.0
+        # Covariance in nm² (σ_x, σ_y in μm; σ_xy in μm², absent in older emitter types)
+        a = (Float64(emitter.σ_x) * 1000.0)^2
+        c = (Float64(emitter.σ_y) * 1000.0)^2
+        b = _get_sigma_xy(emitter) * 1e6
 
-        # Check for covariance term (σ_xy) for rotation
-        # σ_xy may not exist in older emitter types
-        σ_xy = _get_sigma_xy(emitter)
-
-        if σ_xy != 0.0
-            # Rotation angle from covariance matrix
-            # θ = 0.5 * atan(2 * σ_xy / (σ_x² - σ_y²))
-            σ_x_sq = emitter.σ_x^2
-            σ_y_sq = emitter.σ_y^2
-            θ = 0.5 * atan(2.0 * σ_xy, σ_x_sq - σ_y_sq)
+        if b == 0.0 || a * c - b^2 <= 0
+            λ1, λ2, θ = a, c, 0.0
         else
-            θ = 0.0
+            mean_ac = 0.5 * (a + c)
+            r = hypot(0.5 * (a - c), b)
+            λ1 = mean_ac + r
+            λ2 = mean_ac - r
+            θ = 0.5 * atan(2.0 * b, a - c)   # direction of λ1's eigenvector
         end
+        radius_x_nm = sqrt(λ1) * strategy.radius_factor
+        radius_y_nm = sqrt(max(λ2, 0.0)) * strategy.radius_factor
     else
         # Use fixed radii
         radius_x_nm = Float64(strategy.fixed_radius_x::Float64) * strategy.radius_factor

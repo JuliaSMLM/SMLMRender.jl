@@ -127,14 +127,21 @@ end
 
 Create an Image2DTarget for rendering.
 
-When `zoom` is specified with camera data, renders the EXACT camera FOV with
-subdivided pixels (camera_pixels × zoom). When `pixel_size` is specified,
-uses data bounds with margin.
+When `zoom` is specified with camera data, renders the camera FOV with each
+camera pixel subdivided `zoom` times (output pixel = camera pixel / zoom). When
+`pixel_size` is specified, uses data bounds with margin.
 
 # Arguments
 - `smld`: SMLD dataset (must have .emitters field)
 - `pixel_size`: Pixel size in nm (uses data bounds + margin)
-- `zoom`: Zoom factor - renders exact camera FOV with camera_pixels × zoom output
+- `zoom`: Zoom factor, positive, used at its Float64 value (a Float32 `1.1f0` is
+  1.1000000238…). A whole-number zoom renders exactly the camera FOV with
+  camera_pixels × zoom output pixels. A fractional zoom rounds each dimension up,
+  so the image covers the FOV and extends past it by less than one output pixel;
+  the target's ranges give the extent. Needs square camera pixels
+  (`ArgumentError` otherwise); when Float32 edges round the x and y spacings
+  slightly differently, the axis with the smaller spacing extends past its field
+  by the difference.
 - `roi`: Camera pixel ROI as `(x_range, y_range)`. Use `:` for full range.
   Example: `roi=(430:860, 1:256)` or `roi=(430:860, :)` for full y.
   Only used with `zoom` mode.
@@ -145,13 +152,12 @@ Either `pixel_size` or `zoom` must be specified.
 function create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, roi=nothing, margin=0.05)
     @assert pixel_size !== nothing || zoom !== nothing "Must specify either pixel_size or zoom"
 
-    # Mode 1: zoom specified - use EXACT camera FOV (or ROI subset)
+    # Mode 1: zoom specified - use the camera FOV (or ROI subset)
     if zoom !== nothing
         @assert hasfield(typeof(smld), :camera) "zoom requires smld.camera"
 
         camera = smld.camera
-        camera_pixel_size = get_camera_pixel_size(camera)  # nm
-        pixel_size = camera_pixel_size / zoom
+        check_square_camera_pixels(camera)
 
         # Determine pixel ranges (handle roi parameter)
         n_camera_px_x = length(camera.pixel_edges_x) - 1
@@ -174,9 +180,17 @@ function create_target_from_smld(smld; pixel_size=nothing, zoom=nothing, roi=not
         y_min = camera.pixel_edges_y[first(y_range)]
         y_max = camera.pixel_edges_y[last(y_range) + 1]
 
-        # Output dimensions: roi_pixels × zoom
-        width = round(Int, length(x_range) * zoom)
-        height = round(Int, length(y_range) * zoom)
+        # One zoom arithmetic for every entry point: zoom is used at its Float64
+        # value (RenderConfig stores it so), whatever type it was passed in.
+        z = Float64(zoom)
+        (isfinite(z) && z > 0) || throw(ArgumentError("zoom must be positive and finite, got $zoom"))
+
+        x_ext = Float64(x_max) - Float64(x_min)
+        y_ext = Float64(y_max) - Float64(y_min)
+        width, height, ps_um = _zoom_grid(length(x_range), length(y_range), x_ext, y_ext, z)
+        pixel_size = ps_um * 1000
+        x_max = x_min + width * ps_um
+        y_max = y_min + height * ps_um
 
     # Mode 2: pixel_size specified - use data bounds + margin
     else
@@ -222,17 +236,84 @@ end
 """
     get_camera_pixel_size(camera)
 
-Get pixel size in nm from camera object.
+Camera pixel size in nm, as `Float64`: the mean x spacing over the whole field.
+The mean, not the first spacing, so that Float32 rounding of edges far from the
+origin does not carry into a grid built from it.
 """
 function get_camera_pixel_size(camera)
-    # For IdealCamera and SCMOSCamera, assume square pixels
-    # Pixel size = difference between first two pixel edges
-    if length(camera.pixel_edges_x) >= 2
-        return (camera.pixel_edges_x[2] - camera.pixel_edges_x[1]) * 1000  # μm to nm
-    else
-        error("Cannot determine pixel size from camera")
-    end
+    ex = camera.pixel_edges_x
+    length(ex) >= 2 || error("Cannot determine pixel size from camera")
+    return (Float64(ex[end]) - Float64(ex[1])) / (length(ex) - 1) * 1000  # μm to nm
 end
+
+"""
+    check_square_camera_pixels(camera)
+
+Throw an `ArgumentError` unless the camera's x and y pixel sizes agree. Zoom mode
+subdivides camera pixels into square output pixels, so a rectangular-pixel camera
+would have y scaled by the x size and part of its field cut off. The sizes are
+compared as mean spacings over the whole field, to 1e-4 plus the rounding of the
+stored edges (one unit in the last place of an axis's largest edge, over its
+pixel count), so a square Float32 camera far from the origin always passes.
+"""
+function check_square_camera_pixels(camera)
+    ex, ey = camera.pixel_edges_x, camera.pixel_edges_y
+    (length(ex) >= 2 && length(ey) >= 2) || error("Cannot determine pixel size from camera")
+    dx, dy, square = _mean_spacings(ex, ey)
+    square && return nothing
+    throw(ArgumentError("zoom mode needs square camera pixels, but this camera's " *
+                        "pixels are $(dx) nm in x and $(dy) nm in y; render with " *
+                        "pixel_size= or an explicit target instead"))
+end
+
+# Mean x and y spacings of two edge vectors (μm in, nm out), and whether they
+# agree to 1e-4 plus the rounding of the stored edges: one unit in the last
+# place of an axis's largest edge, in the edges' own type, over its pixel count.
+function _mean_spacings(ex, ey)
+    nx, ny = length(ex) - 1, length(ey) - 1
+    dx = (Float64(ex[end]) - Float64(ex[1])) / nx * 1000
+    dy = (Float64(ey[end]) - Float64(ey[1])) / ny * 1000
+    rounding = 1000 * (_edge_ulp(ex) / nx + _edge_ulp(ey) / ny)
+    return dx, dy, abs(dx - dy) <= 1e-4 * max(dx, dy) + rounding
+end
+
+# Zoom-mode grid for an ROI of nx × ny camera pixels spanning x_ext × y_ext μm at
+# zoom z: (width, height, output pixel in μm).
+#
+# - An axis whose nz = n·z is whole, to floating-point rounding (64 ulp), gets
+#   exactly nz pixels; any other axis is fractional and rounds up.
+# - The output pixel is the camera pixel over zoom, the camera pixel being the
+#   larger mean spacing of x and y (Float32 edges far from the origin round each
+#   axis's extent differently), and never less than an axis's extent over its
+#   pixel count, so the grid always covers the field. Only floating-point
+#   rounding of a whole axis can raise it above the camera pixel over zoom.
+# - A fractional axis then gets the fewest pixels that cover its extent at that
+#   pixel, so it extends past its field by less than one output pixel. A whole
+#   axis extends past its field only by the difference of the x and y spacings.
+function _zoom_grid(nx::Int, ny::Int, x_ext::Float64, y_ext::Float64, z::Float64)
+    whole(nz) = abs(nz - round(nz)) <= 64 * eps(max(nz, 1.0))
+    npix(nz) = max(1, whole(nz) ? round(Int, nz) : ceil(Int, nz))
+    nzx, nzy = nx * z, ny * z
+    width, height = npix(nzx), npix(nzy)
+    ps = max(max(x_ext / nx, y_ext / ny) / z, x_ext / width, y_ext / height)
+    whole(nzx) || (width = _covering_pixels(x_ext, ps))
+    whole(nzy) || (height = _covering_pixels(y_ext, ps))
+    return width, height, ps
+end
+
+# The fewest pixels of size ps whose span reaches ext, checked exactly.
+function _covering_pixels(ext::Float64, ps::Float64)
+    c = max(1, ceil(Int, ext / ps))
+    c * ps < ext && (c += 1)
+    while c > 1 && (c - 1) * ps >= ext
+        c -= 1
+    end
+    return c
+end
+
+# One unit in the last place, in the edges' own number type, of the largest
+# edge magnitude (the edges are monotonic, so it sits at an end).
+_edge_ulp(e) = Float64(eps(float(max(abs(first(e)), abs(last(e))))))
 
 """
     calculate_field_range(smld, field::Symbol, clip_percentiles; frame_offsets=nothing)
@@ -245,7 +326,7 @@ Calculate range of field values, optionally with percentile clipping.
 - `clip_percentiles`: Tuple `(low, high)` for percentile clipping, or `nothing`
 - `frame_offsets`: Required when `field === :absolute_frame`
 
-Returns `(min_val, max_val)`
+Returns `(min_val, max_val)` as `Float64`, whatever the field's own number type.
 """
 function calculate_field_range(smld, field::Symbol, clip_percentiles; frame_offsets=nothing)
     # Precompute frame offsets if needed and not provided
@@ -260,13 +341,15 @@ function calculate_field_range(smld, field::Symbol, clip_percentiles; frame_offs
     values = [get_field_value(e, field; frame_offsets=frame_offsets) for e in smld.emitters]
 
     if clip_percentiles === nothing
-        return extrema(values)
+        min_val, max_val = extrema(values)
     else
         low, high = clip_percentiles
         min_val = quantile(values, low)
         max_val = quantile(values, high)
-        return (min_val, max_val)
     end
+    # Integer fields (frame, id) and Float32 fits reduce in their own type;
+    # every caller works in Float64.
+    return (Float64(min_val), Float64(max_val))
 end
 
 """
@@ -326,10 +409,12 @@ function normalize_to_01(img::Matrix{T}) where T<:Real
         return fill(iszero(max_val) ? zero(T) : T(0.5), size(img))
     end
 
-    scale = one(T) / (max_val - min_val)
+    # Divide rather than multiply by the reciprocal: a positive range below
+    # floatmin (tail-only Gaussian intensities) has an infinite reciprocal
+    span = max_val - min_val
     result = similar(img)
     @inbounds for i in eachindex(img)
-        result[i] = (img[i] - min_val) * scale
+        result[i] = (img[i] - min_val) / span
     end
     return result
 end

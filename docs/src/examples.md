@@ -149,7 +149,7 @@ Two modes for controlling output resolution:
 
 **zoom**: Renders exact camera FOV with `camera_pixels × zoom` output
 - `zoom=20` with 64×64 camera → exactly 1280×1280 pixels
-- Output range = camera FOV (no cropping)
+- Output range = camera FOV (no cropping; a fractional zoom rounds the size up, past the FOV by under one output pixel)
 - Predictable, reproducible sizes
 
 **pixel_size**: Uses data bounds with margin (variable size)
